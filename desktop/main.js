@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
+const fsSync = require('fs');
 const { autoUpdater } = require('electron-updater');
 
 const MAX_WRITE_BYTES = 5 * 1024 * 1024;
@@ -54,17 +55,34 @@ app.on('window-all-closed', () => {
 
 // ---- Auto-update: parchea a los usuarios ante futuros CVEs ----
 autoUpdater.autoDownload = true;
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+
+// Logger mínimo a disco: %APPDATA%/Tempo/logs/update.log (visible en producción,
+// que la consola del proceso main no se ve).
+const updateLog = (level, msg) => {
+  try {
+    const dir = path.join(app.getPath('userData'), 'logs');
+    fsSync.mkdirSync(dir, { recursive: true });
+    fsSync.appendFileSync(path.join(dir, 'update.log'),
+      `${new Date().toISOString()} [${level}] ${msg}\n`);
+  } catch (_e) { /* si el log falla, no romper la app */ }
+};
+autoUpdater.logger = {
+  info: (m) => updateLog('info', String(m)),
+  warn: (m) => updateLog('warn', String(m)),
+  error: (m) => updateLog('error', String(m)),
+  debug: (m) => updateLog('debug', String(m))
+};
+['update-available', 'update-not-available', 'download-progress', 'update-downloaded'].forEach((ev) => {
+  autoUpdater.on(ev, (d) => updateLog('info', `${ev}: ${d && d.version ? d.version : ''} ${d && d.percent != null ? d.percent + '%' : ''}`));
 });
 autoUpdater.on('error', (err) => {
-  console.error('[update] error:', err && err.message ? err.message : err);
+  updateLog('error', 'error: ' + (err && err.message ? err.message : err));
 });
 app.whenReady().then(() => {
   try {
     autoUpdater.checkForUpdates();
   } catch (err) {
-    console.error('[update] check falló:', err && err.message ? err.message : err);
+    updateLog('error', 'check falló: ' + (err && err.message ? err.message : err));
   }
 });
 
