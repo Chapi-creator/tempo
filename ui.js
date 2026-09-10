@@ -4,6 +4,7 @@
 (function () {
   'use strict';
   var M = KanbanModel;
+  var BS = BoardStore;
 
   var $ = function (id) { return document.getElementById(id); };
   var boardEl = $('board');
@@ -12,39 +13,36 @@
   var TAG_LABEL = { tag1:'Rojo', tag2:'Naranja', tag3:'Amarillo', tag4:'Verde', tag5:'Turquesa', tag6:'Azul', tag7:'Morado', tag8:'Rosa' };
 
   var state = {
+    boardId: null,
     board: M.newBoard(),
-    colId: null, cardId: null, editingTab: null
+    colId: null, cardId: null, editingTab: null,
+    query: '', tag: '',
+    undo: [], redo: []
   };
+  var events = [];
 
   function persist() {
-    localStorage.setItem('board.data', M.serialize(state.board));
+    BS.saveBoard(state.boardId, state.board);
+    BS.saveEvents(state.boardId, events);
   }
+
   function load() {
-    try {
-      var raw = localStorage.getItem('board.data');
-      if (raw) state.board = M.deserialize(raw);
-    } catch (e) { state.board = M.newBoard(); }
+    BS.migrate();
+    var hadIndex = BS.loadIndex() !== null;
+    var idx = hadIndex ? BS.loadIndex() : [];
+    state.boardId = BS.ensureDefault(idx);       // crea (y persiste) "Tablero 1" si no hay nada
+    var b = BS.loadBoard(state.boardId);
+    if (b) {
+      try { state.board = M.deserialize(b); } catch (e) { state.board = M.newBoard(); }
+    } else {
+      state.board = M.newBoard();               // index existe pero sin datos: arranque limpio
+    }
+    events = BS.loadEvents(state.boardId) || [];
+    return { fresh: !hadIndex };
   }
 
-  var events = [];
-  function loadEvents() {
-    try {
-      var raw = localStorage.getItem('board.events');
-      if (raw) events = Array.isArray(JSON.parse(raw)) ? JSON.parse(raw).slice(-2000) : [];
-    } catch (e) { events = []; }
-  }
-  function persistEvents() {
-    localStorage.setItem('board.events', JSON.stringify(events.slice(-2000)));
-  }
-  function recordMove(cardId, fromCol, toCol) {
-    M.recordEvent(events, cardId, fromCol, toCol);
-    persistEvents();
-  }
-
-  load();
-  loadEvents();
-  if (!localStorage.getItem('board.data')) seedDemo();
-  persist();
+  var fresh = load().fresh;
+  if (fresh) seedDemo();
 
   function seedDemo() {
     var b = state.board;
@@ -55,9 +53,137 @@
     M.addCard(b, c2.id, { title:'Vista previa en vivo', desc:'Listo', tag:'tag8', due:new Date().toISOString().slice(0,10) });
   }
 
+  buildBoardSelect();
+  buildTagChips();
+  persist();
+  render();
+  renderStats();
+
+  // ---- Tableros ----
+  function buildBoardSelect() {
+    var sel = $('boardSel');
+    sel.innerHTML = '';
+    BS.loadIndex().forEach(function (b) {
+      var o = document.createElement('option');
+      o.value = b.id; o.textContent = b.name; o.selected = b.id === state.boardId;
+      sel.appendChild(o);
+    });
+    $('boardCount').textContent = '(' + BS.loadIndex().length + ')';
+  }
+  function switchBoard(id) {
+    closeEditor();
+    persist();
+    state.boardId = id;
+    BS.setActive(id);
+    state.board = M.deserialize(BS.loadBoard(id) || M.newBoard());
+    events = BS.loadEvents(id) || [];
+    state.query = ''; state.tag = '';
+    $('searchInput').value = '';
+    state.undo = []; state.redo = [];
+    buildBoardSelect(); buildTagChips(); render();
+  }
+  $('boardSel').addEventListener('change', function (e) { switchBoard(e.target.value); });
+  $('newBoardBtn').addEventListener('click', function () {
+    var name = prompt('Nombre del tablero:', 'Tablero');
+    if (name === null) return;
+    var id = BS.createBoard(BS.loadIndex(), name || 'Tablero');
+    BS.saveBoard(id, M.serialize(M.newBoard()));
+    BS.saveEvents(id, []);
+    switchBoard(id);
+  });
+  $('renameBoardBtn').addEventListener('click', function () {
+    var meta = BS.loadIndex().find(function (x) { return x.id === state.boardId; });
+    var name = prompt('Nombre del tablero:', meta ? meta.name : '');
+    if (name === null) return;
+    BS.renameBoard(BS.loadIndex(), state.boardId, name);
+    buildBoardSelect(); render();
+  });
+  $('deleteBoardBtn').addEventListener('click', function () {
+    var idx = BS.loadIndex();
+    if (idx.length <= 1) { alert('No se puede borrar el único tablero'); return; }
+    if (!confirm('¿Borrar este tablero?')) return;
+    var rest = idx.filter(function (x) { return x.id !== state.boardId; });
+    BS.deleteBoard(BS.loadIndex(), state.boardId);
+    switchBoard(rest[0].id);
+  });
+
+  // ---- Filtros ----
+  function matchesFilter(card) {
+    var q = state.query;
+    if (q && card.title.toLowerCase().indexOf(q) === -1 && card.desc.toLowerCase().indexOf(q) === -1) return false;
+    if (state.tag && card.tag !== state.tag) return false;
+    return true;
+  }
+  function buildTagChips() {
+    var box = $('tagChips');
+    box.innerHTML = '';
+    box.appendChild(chip('', 'Todos', 'Todos'));
+    TAGS.slice(1).forEach(function (t) {
+      box.appendChild(chip(t, TAG_LABEL[t], ''));
+    });
+  }
+  function chip(tag, label, dotLabel) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip' + (state.tag === tag ? ' active' : '') + (tag === '' ? ' all' : '');
+    b.title = label;
+    if (tag) { b.style.background = 'var(--' + tag + ')'; b.textContent = ''; }
+    else b.textContent = label;
+    b.addEventListener('click', function () {
+      state.tag = (state.tag === tag) ? '' : tag;
+      buildTagChips(); render();
+    });
+    return b;
+  }
+  $('searchInput').addEventListener('input', function (e) {
+    state.query = e.target.value.trim().toLowerCase();
+    render();
+  });
+
+  // ---- Undo / Redo ----
+  function snapshot() {
+    if (state.undo.length >= 50) state.undo.shift();
+    state.undo.push({ b: M.serialize(state.board), e: JSON.stringify(events) });
+    state.redo = [];
+  }
+  function restore(snap) {
+    state.board = M.deserialize(snap.b);
+    events = JSON.parse(snap.e) || [];
+    persist(); render();
+  }
+  function undo() {
+    if (!state.undo.length) return;
+    state.redo.push({ b: M.serialize(state.board), e: JSON.stringify(events) });
+    restore(state.undo.pop());
+  }
+  function redo() {
+    if (!state.redo.length) return;
+    state.undo.push({ b: M.serialize(state.board), e: JSON.stringify(events) });
+    restore(state.redo.pop());
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { closeEditor(); return; }
+    var t = e.target;
+    var inField = t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT';
+    var mod = e.ctrlKey || e.metaKey;
+    if (mod && (e.key.toLowerCase() === 'z')) {
+      if (!inField) { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+      return;
+    }
+    if (mod && e.key.toLowerCase() === 'y') {
+      if (!inField) { e.preventDefault(); redo(); }
+      return;
+    }
+    if (inField) return;
+    if (e.key.toLowerCase() === 'n' && state.board.columns.length > 0) {
+      addCardTo(state.board.columns[0].id);
+    }
+  });
+
   // ---- Render (DOM API, sin HTML interpolado) ----
   function render() {
     boardEl.innerHTML = '';
+    var filtering = !!(state.query || state.tag);
     state.board.columns.forEach(function (col) {
       var colEl = document.createElement('div');
       colEl.className = 'column';
@@ -70,9 +196,11 @@
       titleSpan.className = 'col-title';
       titleSpan.textContent = col.title;
 
+      var visible = col.cards.filter(matchesFilter);
+
       var countSpan = document.createElement('span');
       countSpan.className = 'col-count';
-      countSpan.textContent = String(col.cards.length);
+      countSpan.textContent = filtering ? (visible.length + '/' + col.cards.length) : String(col.cards.length);
 
       var grow = document.createElement('span');
       grow.className = 'grow';
@@ -92,22 +220,22 @@
       var cardsEl = document.createElement('div');
       cardsEl.className = 'cards';
 
-      if (col.cards.length === 0) {
+      if (visible.length === 0) {
         var e = document.createElement('div');
         e.className = 'empty';
-        e.textContent = 'Suelta tarjetas aquí';
+        e.textContent = filtering ? 'Sin coincidencias' : 'Suelta tarjetas aquí';
         cardsEl.appendChild(e);
       }
 
-      col.cards.forEach(function (card) {
+      visible.forEach(function (card) {
         cardsEl.appendChild(renderCard(card));
       });
 
       addDropHandlers(cardsEl, col.id);
 
       var addBtn = document.createElement('button');
+      addBtn.className = 'add-card';
       addBtn.textContent = '+ Tarjeta';
-      addBtn.style.margin = '0 10px 10px';
       addBtn.addEventListener('click', function () { addCardTo(col.id); });
       colEl.appendChild(cardsEl);
       colEl.appendChild(addBtn);
@@ -184,9 +312,10 @@
       if (!sourceCol) return;
       var toCol = state.board.columns.find(function (c) { return c.id === colId; });
       if (!toCol) return;
+      snapshot();
       var dropIndex = computeDropIndex(container, e.clientY);
       M.moveCard(state.board, sourceCol.id, cardId, colId, dropIndex);
-      recordMove(cardId, sourceCol.title, toCol.title);
+      M.recordEvent(events, cardId, sourceCol.title, toCol.title);
       persist(); render();
     });
   }
@@ -209,6 +338,7 @@
 
   // ---- Acciones ----
   function addCardTo(colId) {
+    snapshot();
     var card = M.addCard(state.board, colId, M.blankCard());
     persist(); render();
     openEditor(card, true);
@@ -217,12 +347,14 @@
     var col = state.board.columns.find(function (c) { return c.id === colId; });
     var name = prompt('Nombre de la columna:', col ? col.title : '');
     if (name && name.trim()) {
+      snapshot();
       M.renameColumn(state.board, colId, name.trim());
       persist(); render();
     }
   }
   function deleteColumn(colId) {
     if (!confirm('¿Borrar esta columna y sus tarjetas?')) return;
+    snapshot();
     M.deleteColumn(state.board, colId);
     persist(); render();
   }
@@ -242,7 +374,7 @@
     $('overlay').classList.add('open');
     $('edTitle').focus();
   }
-  function closeEditor() { $('overlay').classList.remove('open'); editing = null; }
+  function closeEditor() { if ($('overlay')) $('overlay').classList.remove('open'); editing = null; }
 
   function buildTagSelect(selected) {
     var box = $('tagSelect');
@@ -261,6 +393,7 @@
 
   $('saveBtn').addEventListener('click', function () {
     if (!editing) return;
+    snapshot();
     editing.title = $('edTitle').value.trim();
     editing.desc = $('edDesc').value.trim();
     editing.due = $('edDue').value;
@@ -271,6 +404,7 @@
   $('cancelBtn').addEventListener('click', closeEditor);
   $('delBtn').addEventListener('click', function () {
     if (!editing || !confirm('¿Borrar esta tarjeta?')) return;
+    snapshot();
     var col = findCardColumn(editing.id);
     if (col) { M.deleteCard(state.board, col.id, editing.id); }
     persist(); render(); closeEditor();
@@ -279,6 +413,7 @@
   // ---- Header actions ----
   $('addColBtn').addEventListener('click', function () {
     if (state.board.columns.length >= M.LIMITS.maxColumns) { alert('Límite de columnas alcanzado'); return; }
+    snapshot();
     var col = M.addColumn(state.board, 'Nueva columna');
     persist(); render(); renameColumn(col.id);
   });
@@ -287,8 +422,10 @@
     $('themeBtn').textContent = light ? '☀️' : '🌙';
   });
   $('exportBtn').addEventListener('click', function () {
+    var meta = BS.loadIndex().find(function (x) { return x.id === state.boardId; }) || {};
+    var safe = (meta.name || 'kanban').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'kanban';
     var fileContent = M.serialize(state.board);
-    var defaultName = 'kanban-backup-' + new Date().toISOString().slice(0,10) + '.json';
+    var defaultName = safe + '-' + new Date().toISOString().slice(0,10) + '.json';
     if (window.tempoApp) {
       window.tempoApp.saveFile({ defaultName: defaultName, content: fileContent });
       return;
@@ -299,14 +436,20 @@
     a.download = defaultName;
     a.click(); URL.revokeObjectURL(a.href);
   });
+  function importAsNewBoard(content) {
+    var board = M.deserialize(content);           // valida schema/límites XSS-safe
+    var name = 'Importado ' + new Date().toISOString().slice(0,10);
+    var id = BS.createBoard(BS.loadIndex(), name);
+    BS.saveBoard(id, board);
+    BS.saveEvents(id, []);
+    switchBoard(id);
+  }
   $('importBtn').addEventListener('click', function () {
     if (window.tempoApp) {
       window.tempoApp.openFile().then(function (res) {
         if (!res) return;
-        try {
-          state.board = M.deserialize(res.content);
-          persist(); render();
-        } catch (err) { alert('Archivo inválido: ' + err.message); }
+        try { importAsNewBoard(res.content); persist(); render(); }
+        catch (err) { alert('Archivo inválido: ' + err.message); }
       });
       return;
     }
@@ -316,13 +459,20 @@
     var f = e.target.files[0]; if (!f) return;
     var r = new FileReader();
     r.onload = function () {
-      try {
-        state.board = M.deserialize(r.result);
-        persist(); render();
-      } catch (err) { alert('Archivo inválido: ' + err.message); }
+      try { importAsNewBoard(r.result); persist(); render(); }
+      catch (err) { alert('Archivo inválido: ' + err.message); }
     };
     r.readAsText(f);
     e.target.value = '';
+  });
+
+  // ---- Imprimir / PDF ----
+  $('printBtn').addEventListener('click', function () {
+    var meta = BS.loadIndex().find(function (x) { return x.id === state.boardId; }) || {};
+    $('printTitle').textContent = (meta.name || 'Tempo');
+    $('printDate').textContent = new Date().toLocaleDateString('es');
+    $('printStats').textContent = String(M.totalCompletions(events)) + ' completadas';
+    window.print();
   });
 
   // ---- Online/offline ----
@@ -333,16 +483,6 @@
   }
   window.addEventListener('online', renderStatus);
   window.addEventListener('offline', renderStatus);
-
-  // ---- Atajo: tecla N nueva tarjeta ----
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') { closeEditor(); return; }
-    var t = e.target;
-    if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT') return;
-    if (e.key.toLowerCase() === 'n' && state.board.columns.length > 0) {
-      addCardTo(state.board.columns[0].id);
-    }
-  });
 
   function fmtDue(d) {
     if (typeof d !== 'string') return '';
@@ -383,6 +523,5 @@
     if (isOpen) renderStats();
   });
 
-  render();
   renderStats();
 })();

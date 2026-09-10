@@ -125,4 +125,53 @@ const seen = new Set();
 for (let i = 0; i < 500; i++) seen.add(K.uid());
 assert.strictEqual(seen.size, 500, '500 uid únicos');
 
-console.log('Todos los tests pasan: funcional + estadísticas + seguridad (XSS, pollution, schema, límites, ids)');
+// ---- Pack4: boardStore (multi-tablero) ----
+const BS = require('./boardStore.js');
+
+// localStorage falsificado para correr sin navegador
+const store = { d: {} };
+BS._use({
+  getItem: k => (k in store.d ? store.d[k] : null),
+  setItem: (k, v) => { store.d[k] = String(v); },
+  removeItem: k => { delete store.d[k]; }
+});
+
+// 4.1 migración v1 -> v2
+const v1data = JSON.stringify({ columns: [{ id: 'c1', title: 'Por hacer', cards: [{ id: 't', title: 'x', tag: '', due: '' }] }] });
+store.d['board.data'] = v1data;
+store.d['board.events'] = '[]';
+const migrated = BS.migrate();
+assert.ok(migrated, 'migrate detecta tablero v1');
+let idx = BS.loadIndex();
+assert.strictEqual(idx.length, 1, 'index arranca con 1 tablero');
+assert.strictEqual(idx[0].name, 'Tablero 1', 'nombre por defecto en migración');
+assert.deepStrictEqual(BS.loadBoard(migrated), JSON.parse(v1data), 'datos v1 preservados');
+assert.strictEqual('board.data' in store.d, false, 'clave v1 removida');
+assert.strictEqual(BS.migrate(), null, 'migrate no re-migra');
+
+// 4.2 ensureDefault / create / rename / multi-tablero aislado
+BS.ensureDefault(BS.loadIndex());
+idx = BS.loadIndex();
+const id2 = BS.createBoard(BS.loadIndex(), '  Trabajo  ');
+assert.ok(id2 !== migrated, 'nuevo tablero con id distinto');
+idx = BS.loadIndex();
+assert.strictEqual(idx.length, 2, 'createBoard agrega al index');
+assert.strictEqual(idx.filter(x => x.id === id2)[0].name, 'Trabajo', 'nombre se sanitiza (trim)');
+
+BS.saveBoard(id2, JSON.parse(v1data));
+BS.saveEvents(id2, [{ ts: 1, from: '', to: 'Hecho', id: 'e1' }]);
+assert.deepStrictEqual(BS.loadBoard(id2), JSON.parse(v1data), 'board se guarda/lee por id');
+assert.strictEqual(BS.loadEvents(migrated).length, 0, 'eventos v1 migrados vacíos');
+assert.strictEqual(BS.loadEvents(id2).length, 1, 'eventos aislados por tablero');
+
+assert.strictEqual(BS.sanitizeName('a'.repeat(100)).length, 40, 'límite de 40 chars en nombre');
+assert.ok(BS.renameBoard(BS.loadIndex(), id2, '  Personal  '), 'renameBoard ok');
+assert.strictEqual(BS.loadIndex().filter(x => x.id === id2)[0].name, 'Personal', 'renameBoard aplica el nuevo nombre');
+
+assert.ok(BS.deleteBoard(BS.loadIndex(), id2), 'deleteBoard ok');
+idx = BS.loadIndex();
+assert.strictEqual(idx.length, 1, 'deleteBoard quita del index');
+assert.ok('board.data.' + id2 in store.d === false, 'deleteBoard limpia los datos del tablero');
+assert.deepStrictEqual(BS.loadBoard(migrated), JSON.parse(v1data), 'el otro tablero sigue intacto');
+
+console.log('Todos los tests pasan: funcional + estadísticas + seguridad (XSS, pollution, schema, límites, ids) + boardStore');

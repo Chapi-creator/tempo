@@ -6,7 +6,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const src = join(here, '..');
 const out = join(here, 'app');
 mkdirSync(out, { recursive: true });
-for (const f of ['index.html', 'app.js', 'ui.js']) {
+for (const f of ['index.html', 'app.js', 'boardStore.js', 'ui.js']) {
   copyFileSync(join(src, f), join(out, f));
 }
-console.log('copied index.html + app.js + ui.js -> desktop/app');
+console.log('copied index.html + app.js + boardStore.js + ui.js -> desktop/app');
