@@ -142,8 +142,16 @@
 
   // ---- Undo / Redo ----
   function snapshot() {
-    if (state.undo.length >= 50) state.undo.shift();
-    state.undo.push({ b: M.serialize(state.board), e: JSON.stringify(events) });
+    var before = M.serialize(state.board);
+    state.undo.push({ b: before, e: JSON.stringify(events) });
+    if (state.undo.length > 50) state.undo.shift();
+    state.redo = [];
+  }
+  // B5: snapshot solo si el contenido cambió (evita undo "huérfano")
+  function snapshotIfChanged(before) {
+    if (M.serialize(state.board) === before) return;
+    state.undo.push({ b: before, e: JSON.stringify(events) });
+    if (state.undo.length > 50) state.undo.shift();
     state.redo = [];
   }
   function restore(snap) {
@@ -362,15 +370,17 @@
   // ---- Editor modal ----
   var editing = null;
   var freshCard = false;
+  var editingTag = '';
   function openEditor(card, isNew) {
     editing = card;
     freshCard = !!isNew;
+    editingTag = card.tag;                         // B3: copia local; no muta hasta guardar
     $('editorTitle').textContent = freshCard ? 'Nueva tarjeta' : 'Editar tarjeta';
     $('edTitle').value = card.title;
     $('edDesc').value = card.desc;
     $('edDue').value = card.due || '';
-    buildTagSelect(card.tag);
-    $('delBtn').style.visibility = card.desc || card.title || card.tag || card.due ? 'visible' : 'hidden';
+    buildTagSelect(editingTag);
+    $('delBtn').style.visibility = 'visible';      // B2: siempre visible
     $('overlay').classList.add('open');
     $('edTitle').focus();
   }
@@ -385,7 +395,7 @@
       if (t) b.style.background = 'var(--' + t + ')';
       b.title = t ? TAG_LABEL[t] : 'Sin etiqueta';
       b.addEventListener('click', function () {
-        editing.tag = t; buildTagSelect(t);
+        editingTag = t; buildTagSelect(t);
       });
       box.appendChild(b);
     });
@@ -393,12 +403,14 @@
 
   $('saveBtn').addEventListener('click', function () {
     if (!editing) return;
-    snapshot();
+    var before = M.serialize(state.board);
     editing.title = $('edTitle').value.trim();
     editing.desc = $('edDesc').value.trim();
     editing.due = $('edDue').value;
+    editing.tag = editingTag;                      // B3: aplica solo al guardar
     var col = findCardColumn(editing.id);
     if (col) M.updateCard(state.board, col.id, editing.id, editing);
+    snapshotIfChanged(before);                     // B5: sin cambios = sin undo
     persist(); render(); closeEditor();
   });
   $('cancelBtn').addEventListener('click', closeEditor);
@@ -413,9 +425,11 @@
   // ---- Header actions ----
   $('addColBtn').addEventListener('click', function () {
     if (state.board.columns.length >= M.LIMITS.maxColumns) { alert('Límite de columnas alcanzado'); return; }
+    var name = prompt('Nombre de la columna:', 'Nueva columna');
+    if (name === null) return;                     // cancelar: no crear nada
     snapshot();
-    var col = M.addColumn(state.board, 'Nueva columna');
-    persist(); render(); renameColumn(col.id);
+    var col = M.addColumn(state.board, name.trim() || 'Nueva columna');
+    persist(); render();
   });
   $('themeBtn').addEventListener('click', function () {
     var light = document.body.classList.toggle('light');

@@ -16,7 +16,8 @@
   var NAME_MAX = 40;
 
   function sanitizeName(name) {
-    return typeof name === 'string' ? name.trim().slice(0, NAME_MAX) : '';
+    var s = typeof name === 'string' ? name.trim().slice(0, NAME_MAX) : '';
+    return s || 'Tablero';
   }
 
   function uid() {
