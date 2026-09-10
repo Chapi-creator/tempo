@@ -1,0 +1,37 @@
+name: build-and-release
+on:
+  push:
+    tags:
+      - 'v*'
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Audit de dependencias
+        working-directory: desktop
+        run: npm audit --audit-level=high
+      - name: Tests (modelo + seguridad)
+        run: node test.js
+      - name: Instalar deps
+        working-directory: desktop
+        run: npm ci
+      - name: Aplicar fuses de Electron
+        working-directory: desktop
+        run: npm run fuses
+      - name: Build instalador
+        working-directory: desktop
+        run: npm run dist
+      - name: Publicar Release + feed de auto-update
+        working-directory: desktop
+        run: |
+          gh release create ${{ github.ref_name }} "release\Tempo Setup ${{ github.ref_name }}.exe" "release\latest.yml" "release\Tempo Setup ${{ github.ref_name }}.exe.blockmap" --title "Tempo ${{ github.ref_name }}" --notes "Build audited, tests passed, fuses enabled."
+        env:
+          GH_TOKEN: ${{ github.token }}

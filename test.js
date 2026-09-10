@@ -2,6 +2,7 @@
 const assert = require('assert');
 const K = require('./app.js');
 
+// ---- Pack1: núcleo funcional ----
 const b = K.newBoard();
 assert.strictEqual(b.columns.length, 3, 'tablero arranca con 3 columnas');
 
@@ -21,7 +22,6 @@ assert.strictEqual(col0.cards.length, 1, 'moveCard quita de columna origen');
 assert.strictEqual(col1.cards.length, 1, 'moveCard agrega a columna destino');
 assert.strictEqual(col1.cards[0].id, c.id, 'la tarjeta movida es la correcta');
 
-// Ciclo local: serializar -> deserializar -> estado idéntico
 const json = K.serialize(b);
 const b2 = K.deserialize(json);
 const json2 = K.serialize(b2);
@@ -39,7 +39,7 @@ assert.strictEqual(b.columns.length, 3, 'deleteColumn elimina');
 
 assert.throws(() => K.deserialize('{"columns":null}'), /Tablero|no parece/, 'deserialize rechaza datos corruptos');
 
-// Estadísticas
+// ---- Pack2: estadísticas ----
 const events = [];
 K.recordEvent(events, 'c1', 'Por hacer', 'Hecho', Date.now());
 K.recordEvent(events, 'c2', 'En curso', 'Hecho', Date.now());
@@ -53,5 +53,76 @@ assert.ok(!K.isDoneColumn('Por hacer'), 'Por hacer no es done');
 const perDay = K.completionsPerDay(events, 7);
 assert.strictEqual(perDay.length, 7, 'completionsPerDay devuelve exactamente N días');
 assert.strictEqual(perDay[perDay.length - 1].count, 2, 'el día de hoy cuenta las 2 completadas');
+K.totalCompletions([{ ts: 'xxx', to: 'Hecho', from: '' }]); // ts corrupto: no explota
 
-console.log('Kanban model: OK (round-trip, moves, CRUD, validación, estadísticas)');
+// ---- Pack3: SEGURIDAD ----
+// 3.1 XSS: tag/due se neutralizan en el borde (eran los sinks a atributos).
+//     title/desc se conservan como texto plano: su seguridad la garantiza el
+//     render con textContent/DOM API en ui.js (no el sanitizador).
+function prepare(xssCard) {
+  const board = K.newBoard();
+  return K.deserialize(JSON.stringify({ columns: [{ id: 'x', title: 'C', cards: [xssCard] }] })).columns[0].cards[0];
+}
+const XS = [
+  { tag: 'tag1"><img src=x onerror=alert(1)>', due: '' },
+  { tag: '', due: '<img src=x onerror=alert(1)>' },
+  { tag: 'tag1" onmouseover="alert(1)', due: '' },
+  { title: '<script>alert(1)</script>', tag: '', due: '' },
+  { desc: '"><img src=x onerror=alert(1)>', tag: '', due: '' },
+  { title: '" onclick="alert(1)', tag: '', due: '' }
+];
+XS.forEach((payload, i) => {
+  const clean = prepare(payload);
+  assert.ok(!/[<>"']/.test(clean.tag), 'XSS tag no sobrevive #' + i);
+  assert.ok(!/[<>"']/.test(clean.due), 'XSS due no sobrevive #' + i);
+});
+// title/desc maliciosos se conservan enteros (textContent los hará inertes)
+const kept = prepare({ title: '<script>alert(1)</script>', tag: '', due: '' });
+assert.strictEqual(kept.title, '<script>alert(1)</script>', 'title se conserva (inocuo via textContent)');
+
+// 3.2 escapeHtml escapa el juego completo de caracteres peligrosos
+const esc = K.esc('<img src=x onerror=alert(1)>"&\'');
+assert.strictEqual(esc, '&lt;img src=x onerror=alert(1)&gt;&quot;&amp;&#39;', 'esc cubre < > " & \'');
+assert.strictEqual(K.esc("a/b"), 'a&#47;b', 'esc cubre /');
+
+// 3.3 Prototype pollution: __proto__/constructor/prototype no contaminan
+const pBoard = K.deserialize('{"columns":[{"__proto__":{"polluted":1},"constructor":{"prototype":{"polluted2":1}},"id":"__proto__","title":"__proto__?!","cards":[{"__proto__":{"polluted3":1},"id":"evil","title":"t","tag":"__proto__","due":"__proto__"}]}]}');
+assert.strictEqual({}.polluted, undefined, '__proto__ no contamina Object.prototype');
+assert.strictEqual({}.polluted2, undefined, 'constructor.prototype no contamina');
+assert.strictEqual({}.polluted3, undefined, 'tarjeta __proto__ no contamina');
+assert.ok(pBoard.columns[0].title, 'titulo __proto__ se sanitiza a string válido');
+assert.strictEqual(pBoard.columns[0].cards[0].tag, '', '__proto__ como tag se descarta');
+assert.strictEqual(pBoard.columns[0].cards[0].due, '', '__proto__ como due se descarta');
+
+// 3.4 Schema: tag whitelist + due formato + límites
+assert.strictEqual(prepare({ title: 'ok', tag: 'tag99', due: '' }).tag, '', 'tag fuera de whitelist se descarta');
+assert.strictEqual(prepare({ title: 'ok', tag: 'tag4', due: '26-09-15' }).due, '', 'due sin formato válido se descarta');
+assert.strictEqual(prepare({ title: 'ok', tag: 'tag4', due: '2026-09-15' }).due, '2026-09-15', 'due válido se conserva');
+
+// 3.5 Límites: tamaño de import, columnas, cards por columna
+assert.ok(K.deserialize({ columns: [] }) && K.deserialize({ columns: [{ title: '' }] }), 'colección mínima válida');
+const manyCols = { columns: [] };
+for (let i = 0; i < 30; i++) manyCols.columns.push({ id: 'c' + i, title: 'c' + i, cards: [] });
+assert.throws(() => K.deserialize(JSON.stringify(manyCols)), /Demasiadas columnas/, 'límite de 20 columnas se impone');
+
+const maxCards = [];
+for (let j = 0; j < 600; j++) maxCards.push({ title: 't' + j });
+const bigCol = K.deserialize(JSON.stringify({ columns: [{ title: 'C', cards: maxCards }] }));
+assert.strictEqual(bigCol.columns[0].cards.length, 500, 'límite de 500 cards por columna se impone');
+
+const bigByte = '{"columns":[]}          ' + new Array(600 * 1024).join(' ');
+assert.throws(() => K.deserialize(bigByte), /grande|KB/, 'límite de 512 KB se impone');
+
+// 3.6 ids únicos tras import (no colisiones que rompan drag&drop)
+const dup = K.deserialize(JSON.stringify({ columns: [
+  { title: 'A', cards: [{ id: 'same', title: '1' }, { id: 'same', title: '2' }] }
+]}));
+const ids = dup.columns[0].cards.map(x => x.id);
+assert.strictEqual(new Set(ids).size, 2, 'ids duplicados se regeneran');
+
+// 3.7 uid() no colisiona en masa
+const seen = new Set();
+for (let i = 0; i < 500; i++) seen.add(K.uid());
+assert.strictEqual(seen.size, 500, '500 uid únicos');
+
+console.log('Todos los tests pasan: funcional + estadísticas + seguridad (XSS, pollution, schema, límites, ids)');

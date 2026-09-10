@@ -1,17 +1,24 @@
 {
   "name": "tempo",
   "productName": "Tempo",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "Tablero Kanban offline que funciona sin internet",
+  "author": "Chapi",
   "main": "main.js",
   "scripts": {
     "copy": "node copy.mjs",
+    "fuses": "node fuses.mjs",
     "start": "npm run copy && electron .",
-    "dist": "npm run copy && electron-builder --win"
+    "dist": "npm run copy && electron-builder --win",
+    "publish": "npm run copy && electron-builder --win --publish always"
   },
   "devDependencies": {
-    "electron": "^31.0.0",
-    "electron-builder": "^24.13.3"
+    "@electron/fuses": "1.8.0",
+    "electron": "44.3.0",
+    "electron-builder": "26.15.3"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.9"
   },
   "build": {
     "appId": "com.tempo.board",
@@ -23,6 +30,13 @@
       "main.js",
       "preload.js",
       "app/**"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Chapi-creator",
+        "repo": "tempo"
+      }
     ],
     "win": {
       "target": [

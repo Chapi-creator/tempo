@@ -2,3 +2,6 @@
 desktop/node_modules/
 desktop/release/
 desktop/app/
+desktop/dist/
+desktop/updates/
+desktop/update-feed/
