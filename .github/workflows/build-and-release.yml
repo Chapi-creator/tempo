@@ -24,6 +24,9 @@ jobs:
       - name: Instalar deps
         working-directory: desktop
         run: npm ci
+      - name: Asegurar binario de Electron
+        working-directory: desktop
+        run: node node_modules/electron/install.js
       - name: Aplicar fuses de Electron
         working-directory: desktop
         run: npm run fuses
