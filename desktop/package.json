@@ -1,0 +1,42 @@
+{
+  "name": "tempo",
+  "productName": "Tempo",
+  "version": "1.0.0",
+  "description": "Tablero Kanban offline que funciona sin internet",
+  "main": "main.js",
+  "scripts": {
+    "copy": "node copy.mjs",
+    "start": "npm run copy && electron .",
+    "dist": "npm run copy && electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.tempo.board",
+    "productName": "Tempo",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "app/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
+  }
+}

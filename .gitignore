@@ -1,0 +1,4 @@
+.vercel
+desktop/node_modules/
+desktop/release/
+desktop/app/
