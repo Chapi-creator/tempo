@@ -55,6 +55,19 @@ assert.strictEqual(perDay.length, 7, 'completionsPerDay devuelve exactamente N d
 assert.strictEqual(perDay[perDay.length - 1].count, 2, 'el día de hoy cuenta las 2 completadas');
 K.totalCompletions([{ ts: 'xxx', to: 'Hecho', from: '' }]); // ts corrupto: no explota
 
+// ---- Pack2b: reordenar columnas ----
+const rb = K.newBoard();
+const r0 = rb.columns[0], r1 = rb.columns[1], r2 = rb.columns[2];
+assert.ok(K.moveColumn(rb, r0.id, 2), 'moveColumn mueve');
+assert.strictEqual(rb.columns[2], r0, 'columna movida queda en destino');
+assert.strictEqual(rb.columns[0], r1, 'la que estaba en el medio ocupa el slot libre');
+assert.ok(K.moveColumn(rb, r0.id, 1), 'mover 3->1 (izquierda)');
+assert.strictEqual(rb.columns[1], r0, 'columna movida a la izquierda');
+assert.ok(!K.moveColumn(rb, r0.id, 1), 'mover a su propia posición es no-op');
+assert.ok(!K.moveColumn(rb, 'no-existe', 0), 'moveColumn con id desconocido falla');
+assert.ok(K.moveColumn(rb, r0.id, 999), 'toIndex fuera de rango se sujeta al límite');
+assert.strictEqual(rb.columns[rb.columns.length - 1], r0, 'índice excesivo lo deja al final');
+
 // ---- Pack3: SEGURIDAD ----
 // 3.1 XSS: tag/due se neutralizan en el borde (eran los sinks a atributos).
 //     title/desc se conservan como texto plano: su seguridad la garantiza el

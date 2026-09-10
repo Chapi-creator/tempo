@@ -8,6 +8,7 @@ const MAX_WRITE_BYTES = 5 * 1024 * 1024;
 const MAX_READ_BYTES = 1024 * 1024;
 const SAFE_NAME_RE = /^[A-Za-z0-9._\-\s]+$/;
 const APP_FILE = 'index.html';
+const JSON_EXT_RE = /\.(json|tempo\.json)$/i;
 
 function isTrustedSender(event) {
   const frame = event.senderFrame;
@@ -16,8 +17,10 @@ function isTrustedSender(event) {
   return url.startsWith('file://') && path.basename(url) === APP_FILE;
 }
 
+let win = null;
+
 function createWindow() {
-  const win = new BrowserWindow({
+  win = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 640,
@@ -47,7 +50,43 @@ function createWindow() {
   win.loadFile(path.join(__dirname, 'app', APP_FILE));
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
+  openAssociatedFile(win, process.argv);
+});
+
+// ---- Asociación .tempo.json: archivo abierto por doble clic llega por argv ----
+function openAssociatedFile(targetWin, argv) {
+  const file = (argv || []).find((a) => typeof a === 'string' && !a.startsWith('-') && JSON_EXT_RE.test(a));
+  if (!file || !targetWin) return;
+  fs.stat(file).catch(() => null).then((st) => {
+    if (!st || st.size > MAX_READ_BYTES) return null;
+    return fs.readFile(file, 'utf8');
+  }).then((content) => {
+    if (!content) return;
+    if (targetWin.webContents.isLoading()) {
+      targetWin.webContents.once('did-finish-load', () => pushFileToRenderer(targetWin, content, path.basename(file)));
+    } else {
+      pushFileToRenderer(targetWin, content, path.basename(file));
+    }
+  }).catch(() => {});
+}
+
+function pushFileToRenderer(targetWin, content, name) {
+  if (!targetWin || targetWin.isDestroyed()) return;
+  targetWin.webContents.send('open-tempo-file', { name, content });
+}
+
+// instancia única: un segundo lanzamiento con archivo enfoca la ventana y lo abre
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (_e, argv) => {
+    if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
+    openAssociatedFile(win, argv);
+  });
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
@@ -112,4 +151,19 @@ ipcMain.handle('open-file', async (event) => {
   if (st.size > MAX_READ_BYTES) return null;
   const content = await fs.readFile(filePaths[0], 'utf8');
   return { name: path.basename(filePaths[0]), content };
+});
+
+// ---- Backup automático al arrancar (copia del tablero a disco) ----
+const MAX_BACKUPS = 10;
+ipcMain.handle('save-backup', async (event, content) => {
+  if (!isTrustedSender(event)) return null;
+  if (typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > MAX_WRITE_BYTES) return null;
+  const dir = path.join(app.getPath('userData'), 'backups');
+  await fs.mkdir(dir, { recursive: true });
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  const file = path.join(dir, `tempo-${stamp}.json`);
+  try { await fs.writeFile(file, content, 'utf8'); } catch (_e) { return null; }
+  const old = (await fs.readdir(dir)).filter((f) => f.startsWith('tempo-') && f.endsWith('.json')).sort();
+  while (old.length > MAX_BACKUPS) await fs.unlink(path.join(dir, old.shift())).catch(() => {});
+  return path.basename(file);
 });

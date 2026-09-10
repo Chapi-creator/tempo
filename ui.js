@@ -38,6 +38,10 @@
       state.board = M.newBoard();               // index existe pero sin datos: arranque limpio
     }
     events = BS.loadEvents(state.boardId) || [];
+    if (window.tempoApp && window.tempoApp.saveBackup) {
+      // F1.4: backup del tablero actual a disco %APPDATA%\Tempo\backups (al arrancar)
+      window.tempoApp.saveBackup(M.serialize(state.board) + '\n' + JSON.stringify(events));
+    }
     return { fresh: !hadIndex };
   }
 
@@ -182,11 +186,27 @@
       if (!inField) { e.preventDefault(); redo(); }
       return;
     }
+    if (mod && e.key.toLowerCase() === 'd' && editing) {
+      e.preventDefault();
+      $('dupBtn').click();
+      return;
+    }
     if (inField) return;
     if (e.key.toLowerCase() === 'n' && state.board.columns.length > 0) {
       addCardTo(state.board.columns[0].id);
     }
+    if (e.key.toLowerCase() === 't') toggleTheme();
   });
+
+  function toggleTheme() {
+    var light = document.body.classList.toggle('light');
+    $('themeBtn').textContent = light ? '☀️' : '🌙';
+  }
+
+  function toggleTheme() {
+    var light = document.body.classList.toggle('light');
+    $('themeBtn').textContent = light ? '☀️' : '🌙';
+  }
 
   // ---- Render (DOM API, sin HTML interpolado) ----
   function render() {
@@ -213,6 +233,10 @@
       var grow = document.createElement('span');
       grow.className = 'grow';
 
+      var mvLeft = iconButton('◀', 'Mover columna a la izquierda');
+      mvLeft.addEventListener('click', function () { moveCol(col.id, -1); });
+      var mvRight = iconButton('▶', 'Mover columna a la derecha');
+      mvRight.addEventListener('click', function () { moveCol(col.id, 1); });
       var renameBtn = iconButton('✎', 'Renombrar');
       renameBtn.addEventListener('click', function () { renameColumn(col.id); });
       var delBtn = iconButton('🗑', 'Borrar columna');
@@ -221,6 +245,8 @@
       head.appendChild(titleSpan);
       head.appendChild(countSpan);
       head.appendChild(grow);
+      head.appendChild(mvLeft);
+      head.appendChild(mvRight);
       head.appendChild(renameBtn);
       head.appendChild(delBtn);
       colEl.appendChild(head);
@@ -236,7 +262,7 @@
       }
 
       visible.forEach(function (card) {
-        cardsEl.appendChild(renderCard(card));
+        cardsEl.appendChild(renderCard(card, col));
       });
 
       addDropHandlers(cardsEl, col.id);
@@ -260,11 +286,13 @@
     return b;
   }
 
-  function renderCard(card) {
+  function renderCard(card, col) {
     var el = document.createElement('div');
     el.className = 'card';
     el.draggable = true;
     el.dataset.card = card.id;
+    var overdue = isOverdue(card, col);
+    if (overdue) el.classList.add('overdue');
 
     var title = document.createElement('h3');
     if (card.title) {
@@ -291,7 +319,7 @@
     }
     if (card.due) {
       var due = document.createElement('span');
-      due.className = 'due';
+      due.className = 'due' + (overdue ? ' overdue' : '');
       due.textContent = '📅 ' + fmtDue(card.due);
       meta.appendChild(due);
     }
@@ -366,15 +394,27 @@
     M.deleteColumn(state.board, colId);
     persist(); render();
   }
+  function moveCol(colId, delta) {
+    var from = state.board.columns.findIndex(function (c) { return c.id === colId; });
+    if (from === -1) return;
+    var to = from + delta;
+    if (to < 0 || to >= state.board.columns.length) return;
+    snapshot();
+    M.moveColumn(state.board, colId, to);
+    persist(); render();
+  }
 
   // ---- Editor modal ----
   var editing = null;
   var freshCard = false;
   var editingTag = '';
+  var editingColId = null;
   function openEditor(card, isNew) {
     editing = card;
     freshCard = !!isNew;
     editingTag = card.tag;                         // B3: copia local; no muta hasta guardar
+    var col = findCardColumn(card.id);
+    editingColId = col ? col.id : null;
     $('editorTitle').textContent = freshCard ? 'Nueva tarjeta' : 'Editar tarjeta';
     $('edTitle').value = card.title;
     $('edDesc').value = card.desc;
@@ -414,6 +454,18 @@
     persist(); render(); closeEditor();
   });
   $('cancelBtn').addEventListener('click', closeEditor);
+  $('dupBtn').addEventListener('click', function () {
+    if (!editing) return;
+    snapshot();
+    var copy = M.addCard(state.board, editingColId, {
+      title: $('edTitle').value.trim(),
+      desc: $('edDesc').value.trim(),
+      tag: editingTag,
+      due: $('edDue').value
+    });
+    persist(); render();
+    openEditor(copy, true);
+  });
   $('delBtn').addEventListener('click', function () {
     if (!editing || !confirm('¿Borrar esta tarjeta?')) return;
     snapshot();
@@ -431,10 +483,7 @@
     var col = M.addColumn(state.board, name.trim() || 'Nueva columna');
     persist(); render();
   });
-  $('themeBtn').addEventListener('click', function () {
-    var light = document.body.classList.toggle('light');
-    $('themeBtn').textContent = light ? '☀️' : '🌙';
-  });
+  $('themeBtn').addEventListener('click', toggleTheme);
   $('exportBtn').addEventListener('click', function () {
     var meta = BS.loadIndex().find(function (x) { return x.id === state.boardId; }) || {};
     var safe = (meta.name || 'kanban').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'kanban';
@@ -469,6 +518,14 @@
     }
     $('fileInput').click();
   });
+  if (window.tempoApp && window.tempoApp.onOpenFile) {
+    // F2.7: archivo .tempo.json abierto por doble clic → se importa como tablero nuevo
+    window.tempoApp.onOpenFile(function (res) {
+      if (!res || typeof res.content !== 'string') return;
+      try { importAsNewBoard(res.content); persist(); render(); }
+      catch (err) { alert('Archivo inválido: ' + err.message); }
+    });
+  }
   $('fileInput').addEventListener('change', function (e) {
     var f = e.target.files[0]; if (!f) return;
     var r = new FileReader();
@@ -490,10 +547,27 @@
   });
 
   // ---- Online/offline ----
+// cuándo una tarjeta está vencida: tiene fecha límite pasada y NO está en una
+  // columna de "hecho/listo" — en columna terminada una fecha vieja no es un problema
+  function isOverdue(card, col) {
+    if (!card.due || !col) return false;
+    if (M.isDoneColumn(col.title)) return false;
+    var today = new Date();
+    var t = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+    return card.due < t;
+  }
+
   function renderStatus() {
     var on = navigator.onLine;
     $('statusDot').className = 'dot' + (on ? '' : ' offline');
-    $('statusText').textContent = on ? 'online — datos guardados localmente' : 'offline — edita normal, guarda en el navegador';
+    $('statusText').textContent = on ? 'online - datos guardados localmente' : 'offline - edita normal, guarda en el navegador';
+    var overdue = 0;
+    state.board.columns.forEach(function (col) {
+      col.cards.forEach(function (card) { if (isOverdue(card, col)) overdue++; });
+    });
+    var badge = $('overdueBadge');
+    badge.textContent = '⚠ ' + overdue + ' vencida' + (overdue === 1 ? '' : 's');
+    badge.className = 'overdue-badge' + (overdue > 0 ? ' open' : '');
   }
   window.addEventListener('online', renderStatus);
   window.addEventListener('offline', renderStatus);

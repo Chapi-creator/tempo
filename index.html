@@ -83,6 +83,14 @@
   .card h3 { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
   .card p { color: var(--muted); font-size: 12px; white-space: pre-wrap; }
   .card .meta { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+  .card.overdue { border-color: var(--tag1); }
+  .card.overdue h3 { color: var(--tag1); }
+  .due.overdue { color: var(--tag1); font-weight: 700; }
+  .overdue-badge {
+    background: var(--tag1); color: #fff; font-size: 12px; font-weight: 700;
+    border-radius: 12px; padding: 3px 10px; display: none;
+  }
+  .overdue-badge.open { display: inline-block; }
   .tag { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex-shrink: 0; }
   .due { font-size: 11px; color: var(--muted); }
   .add-col-btn { align-self: center; margin: 4px; }
@@ -164,6 +172,7 @@
   <button id="renameBoardBtn" title="Renombrar tablero">✎</button>
   <button id="deleteBoardBtn" title="Borrar tablero">🗑</button>
   <span class="status"><span class="dot" id="statusDot"></span><span id="statusText">online</span></span>
+  <span class="overdue-badge" id="overdueBadge" title="Tarjetas vencidas">⚠</span>
   <button id="themeBtn" title="Tema claro/oscuro">🌙</button>
   <button id="printBtn" title="Imprimir / guardar PDF">🖨</button>
   <button id="exportBtn" title="Guardar copia en JSON">⬇ Exportar</button>
@@ -206,7 +215,8 @@
     </label>
     <label>Fecha límite <input type="date" id="edDue"></label>
     <div class="btns">
-      <button id="delBtn" class="btn:red" style="margin-right:auto">🗑 Borrar</button>
+      <button id="dupBtn" class="btn:red" style="margin-right:auto">⧉ Duplicar</button>
+      <button id="delBtn">🗑 Borrar</button>
       <button id="cancelBtn">Cancelar</button>
       <button class="primary" id="saveBtn">Guardar</button>
     </div>

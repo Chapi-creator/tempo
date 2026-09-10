@@ -114,6 +114,17 @@
     return true;
   }
 
+  // Mueve una columna a otra posición (índice destino) para reordenar el tablero.
+  function moveColumn(board, colId, toIndex) {
+    var from = board.columns.findIndex(function (c) { return c.id === colId; });
+    if (from === -1) return false;
+    toIndex = Math.max(0, Math.min(toIndex, board.columns.length - 1));
+    if (toIndex === from) return false;
+    var col = board.columns.splice(from, 1)[0];
+    board.columns.splice(toIndex, 0, col);
+    return true;
+  }
+
   // Move a card from one column to another at a given index (or end if index not provided)
   function moveCard(board, fromColId, cardId, toColId, index) {
     var from = findColumn(board, fromColId);
@@ -271,6 +282,7 @@
     addColumn: addColumn,
     renameColumn: renameColumn,
     deleteColumn: deleteColumn,
+    moveColumn: moveColumn,
     moveCard: moveCard,
     serialize: serialize,
     deserialize: deserialize,

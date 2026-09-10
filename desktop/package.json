@@ -1,7 +1,7 @@
 {
   "name": "tempo",
   "productName": "Tempo",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "description": "Tablero Kanban offline que funciona sin internet",
   "author": "Chapi",
   "main": "main.js",
@@ -36,6 +36,14 @@
         "provider": "github",
         "owner": "Chapi-creator",
         "repo": "tempo"
+      }
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["tempo.json"],
+        "name": "Tablero Tempo",
+        "description": "Tablero Kanban Tempo exportado",
+        "role": "Editor"
       }
     ],
     "win": {
