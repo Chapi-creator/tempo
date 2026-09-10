@@ -9,7 +9,7 @@
     "copy": "node copy.mjs",
     "fuses": "node fuses.mjs",
     "start": "npm run copy && electron .",
-    "dist": "npm run copy && electron-builder --win",
+    "dist": "npm run copy && electron-builder --win --publish never",
     "publish": "npm run copy && electron-builder --win --publish always"
   },
   "devDependencies": {
