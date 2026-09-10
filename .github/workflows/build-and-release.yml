@@ -3,6 +3,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 permissions:
   contents: write
 jobs:
@@ -29,9 +30,17 @@ jobs:
       - name: Build instalador
         working-directory: desktop
         run: npm run dist
-      - name: Publicar Release + feed de auto-update
+      - name: Publicar Release + feed de auto-update (idempotente)
         working-directory: desktop
+        shell: pwsh
         run: |
-          gh release create ${{ github.ref_name }} "release\Tempo Setup ${{ github.ref_name }}.exe" "release\latest.yml" "release\Tempo Setup ${{ github.ref_name }}.exe.blockmap" --title "Tempo ${{ github.ref_name }}" --notes "Build audited, tests passed, fuses enabled."
+          $tag = "${{ github.ref_name }}"
+          $exists = gh release view $tag 2>$null
+          if ($exists) {
+            Write-Host "Release $tag ya existe, actualizando assets (tolerante a re-runs)"
+            gh release upload $tag "release\Tempo Setup $tag.exe" "release\Tempo Setup $tag.exe.blockmap" "release\latest.yml" --clobber
+          } else {
+            gh release create $tag "release\Tempo Setup $tag.exe" "release\Tempo Setup $tag.exe.blockmap" "release\latest.yml" --title "Tempo $tag" --notes "Build audited, tests passed, fuses enabled."
+          }
         env:
           GH_TOKEN: ${{ github.token }}
