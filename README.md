@@ -1,6 +1,6 @@
 # Tempo 🗓️
 
-Un tablero Kanban que funciona **sin internet, sin cuenta y sin backend**. Todo queda guardado en tu navegador (localStorage) y sí, es gratis de verdad — ni siquiera tengo que mantener un servidor porque no existe.
+Un tablero Kanban **sin cuenta y sin backend** (todo queda guardado en tu navegador). La **web necesita internet para cargarse**, pero la **app de escritorio funciona 100% offline** — sus archivos viven en tu disco, no en un servidor. Y sí, es gratis de verdad: no mantengo ningún servidor porque no existe.
 
 Construido con **Opencode** (a pulso de conversación), con **$0 de presupuesto** y **cero dependencias en el frontend**: solo HTML + CSS + JS vanilla, y práctica obsesiva de no tocar nada imaginario. El resultado: una página que se abre, funciona y no se cae.
 
@@ -9,8 +9,8 @@ Construido con **Opencode** (a pulso de conversación), con **$0 de presupuesto*
 Porque la mayoría de apps de productividad te piden cuenta, token, plan premium y hasta la foto de tu primera mascota. Tempo es todo lo contrario:
 
 - **No pide cuenta.** Tus datos no salen de tu máquina.
-- **No necesita internet** para usarse (la desventaja: no hay nube, la sincronización la haces tú exportando/importando un JSON).
-- **Es un solo archivo visualizado en el navegador de cada quien.** No hay servidor que hackear, caer o cobrar.
+- **Sin backend ni servidor propio.** No hay nada que hackear, caer o cobrar. La web es un archivo estático hosteado en el CDN de Vercel; la app de escritorio carga sus archivos desde el disco.
+- **Offline de verdad solo en la app de escritorio.** La web necesita internet para cargarse; lo que no requiere internet es donde se guardan tus datos (localStorage / disco local). La sincronización entre dispositivos la haces tú exportando/importando un JSON.
 
 ## 🚀 Probar sin instalar nada
 
@@ -33,9 +33,9 @@ Abre en cualquier navegador, y listo. Si es tu primera visita, te siembro un tab
 - **Imprimir / guardar PDF** del tablero.
 - **App de escritorio** (Windows, Electron): con auto-actualización y **backup local automático** en `%APPDATA%\Tempo\backups` cada vez que abres la app.
 
-## 🖥️ App de escritorio
+## 🖥️ App de escritorio (la versión offline)
 
-La app de Windows se empaqueta en cada release (descargable desde las [Releases](https://github.com/Chapi-creator/tempo/releases)). Incluye:
+La app de Windows se empaqueta en cada release (descargable desde las [Releases](https://github.com/Chapi-creator/tempo/releases)). Es la **única forma de usar Tempo sin conexión a internet**: carga todo desde tu disco, no desde la web. Incluye:
 
 - **Auto-update** silencioso al cerrar (parchea futuros CVEs de Electron).
 - **Backup local automático** al arrancar (últimos 10, en `%APPDATA%/Tempo/backups`).
