@@ -65,8 +65,13 @@
     var idx = hadIndex ? BS.loadIndex() : [];
     state.boardId = BS.ensureDefault(idx);       // crea (y persiste) "Tablero 1" si no hay nada
     var b = BS.loadBoard(state.boardId);
+    var reseeded = false;
     if (b) {
       try { state.board = M.deserialize(b); } catch (e) { state.board = M.newBoard(); }
+      if (LEGACY_DEMO.has(state.board)) {         // tablero de ejemplo de v1.x: se re-siembra
+        state.board = M.newBoard();
+        reseeded = true;
+      }
     } else {
       state.board = M.newBoard();               // index existe pero sin datos: arranque limpio
     }
@@ -75,20 +80,34 @@
       // F1.4: backup del tablero actual a disco %APPDATA%\Tempo\backups (al arrancar)
       window.tempoApp.saveBackup(M.serialize(state.board) + '\n' + JSON.stringify(events));
     }
-    return { fresh: !hadIndex };
+    return { fresh: !hadIndex || reseeded };
   }
 
   var fresh = load().fresh;
   if (fresh) seedDemo();
 
+  // Tablero inicial neutral: un mini-tutorial de cómo usar Tempo.
   function seedDemo() {
     var b = state.board;
     var c0 = b.columns[0], c1 = b.columns[1], c2 = b.columns[2];
-    M.addCard(b, c0.id, { title:'Definir el MVP', desc:'Qué entra y qué no entra en la versión 1', tag:'tag3', due:'' });
-    M.addCard(b, c0.id, { title:'Elegir plantillas', desc:'3 estilos de portafolio', tag:'tag6', due:'' });
-    M.addCard(b, c1.id, { title:'Estructura de datos', desc:'localStorage + export JSON', tag:'tag4', due:'' });
-    M.addCard(b, c2.id, { title:'Vista previa en vivo', desc:'Listo', tag:'tag8', due:new Date().toISOString().slice(0,10) });
+    M.addCard(b, c0.id, { title:'Agrega una tarjeta', desc:'Usa el botón + de la columna (o la tecla N). Se guarda solo, sin registro.', tag:'tag4', due:'' });
+    M.addCard(b, c0.id, { title:'Arrástrala de columna', desc:'Mové las tarjetas con el mouse para cambiar su estado.', tag:'tag6', due:'' });
+    M.addCard(b, c1.id, { title:'Etiquetas y fecha límite', desc:'Color por etiqueta (ícono 🏷) y fecha de vencimiento. Las vencidas se ponen en rojo.', tag:'tag3', due:'' });
+    M.addCard(b, c1.id, { title:'Buscar y filtrar', desc:'La caja de búsqueda filtra al instante; los chips de abajo filtran por etiqueta.', tag:'tag8', due:'' });
+    M.addCard(b, c2.id, { title:'Exportar, imprimir o HTML', desc:'⬇ Exportar/Importar copias en JSON, imprime a PDF, o guarda una vista HTML con ⬇ HTML.', tag:'tag5', due:'' });
   }
+
+  // Demo viejo sembrado en versiones anteriores (tareas de desarrollo): se descarta
+  // para no ensuciar el tablero de quien ya lo tenía. Ponytail: match exacto por títulos.
+  var LEGACY_DEMO = {
+    has: function (b) {
+      var titles = [];
+      b.columns.forEach(function (c) { c.cards.forEach(function (card) { titles.push(card.title); }); });
+      return titles.length === 4 && titles.indexOf('Definir el MVP') !== -1 &&
+        titles.indexOf('Elegir plantillas') !== -1 && titles.indexOf('Estructura de datos') !== -1 &&
+        titles.indexOf('Vista previa en vivo') !== -1;
+    }
+  };
 
   buildBoardSelect();
   buildTagChips();

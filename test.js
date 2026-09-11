@@ -192,6 +192,17 @@ FRONT_FILES.forEach((file) => {
 });
 assert.ok(true, 'front libre de sinks (innerHTML solo =\'\')');
 
+// ---- Pack7: tablero inicial neutral (sin tareas de desarrollo) ----
+const uiSrc = fs.readFileSync(path.join(__dirname, 'ui.js'), 'utf8');
+const seedFn = uiSrc.slice(uiSrc.indexOf('function seedDemo'), uiSrc.indexOf('var LEGACY_DEMO'));
+['Definir el MVP', 'Elegir plantillas', 'Estructura de datos', 'Vista previa en vivo'].forEach((t) => {
+  assert.ok(!seedFn.includes(t), `seed demo ya no contiene tarea de desarrollo: ${t}`);
+});
+assert.ok(seedFn.includes('Agrega una tarjeta'), 'seed demo nuevo: tutorial de agregar tarjeta');
+assert.ok(seedFn.includes('Arrástrala de columna'), 'seed demo nuevo: tutorial de drag');
+assert.ok(seedFn.includes('Buscar y filtrar'), 'seed demo nuevo: tutorial de búsqueda');
+assert.ok(uiSrc.includes('LEGACY_DEMO'), 'detección de demo viejo presente en load()');
+
 // ---- Pack4: boardStore (multi-tablero) ----
 const BS = require('./boardStore.js');
 
