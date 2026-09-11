@@ -21,6 +21,19 @@
   };
   var events = [];
 
+  // Demo viejo sembrado en versiones anteriores (tareas de desarrollo): se descarta
+  // para no ensuciar el tablero de quien ya lo tenía. Ponytail: detecta por las 4
+  // tarjetas; tarjetas extra (vacías) incluidas se descartan también en el re-sembrado.
+  var LEGACY_DEMO = {
+    has: function (b) {
+      var titles = [];
+      b.columns.forEach(function (c) { c.cards.forEach(function (card) { titles.push(card.title); }); });
+      return titles.indexOf('Definir el MVP') !== -1 &&
+        titles.indexOf('Elegir plantillas') !== -1 && titles.indexOf('Estructura de datos') !== -1 &&
+        titles.indexOf('Vista previa en vivo') !== -1;
+    }
+  };
+
   function persist() {
     BS.saveBoard(state.boardId, state.board);
     BS.saveEvents(state.boardId, events);
@@ -96,19 +109,6 @@
     M.addCard(b, c1.id, { title:'Buscar y filtrar', desc:'La caja de búsqueda filtra al instante; los chips de abajo filtran por etiqueta.', tag:'tag8', due:'' });
     M.addCard(b, c2.id, { title:'Exportar, imprimir o HTML', desc:'⬇ Exportar/Importar copias en JSON, imprime a PDF, o guarda una vista HTML con ⬇ HTML.', tag:'tag5', due:'' });
   }
-
-  // Demo viejo sembrado en versiones anteriores (tareas de desarrollo): se descarta
-  // para no ensuciar el tablero de quien ya lo tenía. Ponytail: detecta por las 4
-  // tarjetas; tarjetas extra (vacías) incluidas se descartan también en el re-sembrado.
-  var LEGACY_DEMO = {
-    has: function (b) {
-      var titles = [];
-      b.columns.forEach(function (c) { c.cards.forEach(function (card) { titles.push(card.title); }); });
-      return titles.indexOf('Definir el MVP') !== -1 &&
-        titles.indexOf('Elegir plantillas') !== -1 && titles.indexOf('Estructura de datos') !== -1 &&
-        titles.indexOf('Vista previa en vivo') !== -1;
-    }
-  };
 
   buildBoardSelect();
   buildTagChips();
