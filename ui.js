@@ -38,16 +38,16 @@
     $('modalOk').textContent = o.okLabel || 'Aceptar';
     $('modalOk').disabled = false;
     modalOnCancel = o.onCancel || null;
-    $('modalOverlay').hidden = false;
+    $('modalOverlay').classList.add('open');
     $('modalOk').onclick = function () {
-      $('modalOverlay').hidden = true;
+      $('modalOverlay').classList.remove('open');
       var cb = o.onOk; o.onOk = null;
       if (cb) cb();
     };
     $('modalCancel').onclick = function () { closeModal(); };
   }
   function closeModal() {
-    $('modalOverlay').hidden = true;
+    $('modalOverlay').classList.remove('open');
     var c = modalOnCancel; modalOnCancel = null;
     if (c) c();
   }
@@ -56,7 +56,7 @@
     if (e.key === 'Enter') $('modalOk').click();
   });
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && !$('modalOverlay').hidden) closeModal();
+    if (e.key === 'Escape' && $('modalOverlay').classList.contains('open')) closeModal();
   });
 
   function load() {
