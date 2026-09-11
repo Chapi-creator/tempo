@@ -138,6 +138,47 @@ const seen = new Set();
 for (let i = 0; i < 500; i++) seen.add(K.uid());
 assert.strictEqual(seen.size, 500, '500 uid únicos');
 
+// 3.8 Casos esquina de import: JSON inválido, desc/title gigantes, anidación profunda
+assert.throws(() => K.deserialize('esto no es json'), /parse|JSON/, 'import de texto corrupto lanza');
+assert.throws(() => K.deserialize('{"columns":{}}'), /no parece/, 'columns no-array lanza');
+const hugeField = K.deserialize(JSON.stringify({ columns: [{ title: 'C', cards: [{ title: 't'.repeat(200), desc: 'd'.repeat(5000) }] }] }));
+assert.strictEqual(hugeField.columns[0].cards[0].title.length, 80, 'title enorme se recorta a 80');
+assert.strictEqual(hugeField.columns[0].cards[0].desc.length, 2000, 'desc enorme se recorta a 2000');
+const deep = JSON.parse('{"columns":[{"title":"a","cards":[{"title":"b","cards":[{"title":"c"}]}]}]}');
+const deepOk = K.deserialize(deep);
+assert.strictEqual(deepOk.columns[0].cards[0].title, 'b', 'anidación extra se ignora sin romper');
+
+// ---- Pack5: anti-sinks estático (vigila que no reaparezca innerHTML/eval) ----
+// El render de Tempo es DOM + textContent. Si alguien introduce innerHTML,
+// insertAdjacentHTML, document.write o eval en los archivos del front, el CI falla.
+const fs = require('fs');
+const path = require('path');
+const FRONT_FILES = ['ui.js', 'app.js', 'boardStore.js'];
+const SINK_RE = [
+  /insertAdjacentHTML/,
+  /outerHTML/,
+  /document\.write/,
+  /eval\s*\(/,
+  /new\s+Function\s*\(/,
+  /createElement\s*\(\s*['"]?script['"]?/i,
+  /\.srcdoc/
+];
+FRONT_FILES.forEach((file) => {
+  const src = fs.readFileSync(path.join(__dirname, file), 'utf8');
+  src.split('\n').forEach((line, n) => {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) return;
+    SINK_RE.forEach((re) => {
+      assert.ok(!re.test(line), `${file}:${n + 1} usa sink prohibido: ${line.trim()}`);
+    });
+    const m = line.match(/innerHTML/);
+    if (m && !/\.innerHTML\s*=\s*['"]{2}/.test(line)) {
+      assert.fail(`${file}:${n + 1} asigna innerHTML con contenido: ${line.trim()}`);
+    }
+  });
+});
+assert.ok(true, 'front libre de sinks (innerHTML solo =\'\')');
+
 // ---- Pack4: boardStore (multi-tablero) ----
 const BS = require('./boardStore.js');
 

@@ -3,12 +3,13 @@ on:
   push:
     tags:
       - 'v*'
+  pull_request:
   workflow_dispatch:
 permissions:
   contents: write
 jobs:
-  build:
-    runs-on: windows-latest
+  validate:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,8 +20,19 @@ jobs:
       - name: Audit de dependencias
         working-directory: desktop
         run: npm audit --audit-level=high
-      - name: Tests (modelo + seguridad)
+      - name: Tests (modelo + seguridad + anti-sinks)
         run: node test.js
+  build:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: validate
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
       - name: Instalar deps
         working-directory: desktop
         run: npm ci
