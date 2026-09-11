@@ -67,7 +67,10 @@
     background: var(--panel2); color: var(--muted); font-size: 12px; padding: 3px 10px;
   }
   .chip.active { border-color: var(--text); color: var(--text); }
-  main { padding: 20px; display: flex; gap: 16px; overflow-x: auto; align-items: flex-start; }
+  main { padding: 20px; display: flex; gap: 16px; overflow-x: auto; align-items: flex-start; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+  main::-webkit-scrollbar { height: 8px; }
+  main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  main::-webkit-scrollbar-track { background: transparent; }
   .column {
     background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
     width: 280px; min-width: 280px; display: flex; flex-direction: column; max-height: calc(100vh - 180px);
