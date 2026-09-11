@@ -1,7 +1,7 @@
 {
   "name": "tempo",
   "productName": "Tempo",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "Tablero Kanban offline que funciona sin internet",
   "author": "Chapi",
   "main": "main.js",
