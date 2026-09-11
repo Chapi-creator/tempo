@@ -98,12 +98,13 @@
   }
 
   // Demo viejo sembrado en versiones anteriores (tareas de desarrollo): se descarta
-  // para no ensuciar el tablero de quien ya lo tenía. Ponytail: match exacto por títulos.
+  // para no ensuciar el tablero de quien ya lo tenía. Ponytail: detecta por las 4
+  // tarjetas; tarjetas extra (vacías) incluidas se descartan también en el re-sembrado.
   var LEGACY_DEMO = {
     has: function (b) {
       var titles = [];
       b.columns.forEach(function (c) { c.cards.forEach(function (card) { titles.push(card.title); }); });
-      return titles.length === 4 && titles.indexOf('Definir el MVP') !== -1 &&
+      return titles.indexOf('Definir el MVP') !== -1 &&
         titles.indexOf('Elegir plantillas') !== -1 && titles.indexOf('Estructura de datos') !== -1 &&
         titles.indexOf('Vista previa en vivo') !== -1;
     }
