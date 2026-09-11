@@ -84,7 +84,10 @@
   .col-head .grow { flex: 1; }
   .icon-btn { background: none; border: none; color: var(--muted); cursor: pointer; padding: 2px 6px; font-size: 15px; }
   .icon-btn:hover { color: var(--text); }
-  .cards { padding: 10px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; min-height: 40px; }
+  .cards { padding: 10px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; min-height: 40px; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+  .cards::-webkit-scrollbar { width: 8px; }
+  .cards::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  .cards::-webkit-scrollbar-track { background: transparent; }
   .card {
     background: var(--panel2); border: 1px solid var(--border); border-radius: 10px;
     padding: 10px 12px; font-size: 13px; cursor: grab; position: relative;
