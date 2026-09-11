@@ -148,6 +148,19 @@ const deep = JSON.parse('{"columns":[{"title":"a","cards":[{"title":"b","cards":
 const deepOk = K.deserialize(deep);
 assert.strictEqual(deepOk.columns[0].cards[0].title, 'b', 'anidación extra se ignora sin romper');
 
+// ---- Pack6: export visual HTML autocontenido ----
+const htmlBoard = K.deserialize(JSON.stringify({ columns: [
+  { title: 'Por hacer', cards: [{ title: '<script>alert(1)</script>', desc: 'l1\nl2', tag: 'tag1', due: '2026-01-01' }, { title: 'ok' }] },
+  { title: 'Hecho', cards: [{ title: 'done"&', due: '2020-05-05' }] }
+]}));
+const htmlOut = K.boardToHTML(htmlBoard, { name: '<Mi Tablero>' });
+assert.ok(htmlOut.startsWith('<!DOCTYPE html>'), 'HTML comienza con doctype');
+assert.ok(htmlOut.includes('&lt;script&gt;'), 'título XSS escapado en el HTML exportado');
+assert.ok(!/<script>alert\(1\)<\/script>/.test(htmlOut), 'script del título nunca aparece crudo');
+assert.ok(htmlOut.includes('l1'), 'desc incluye texto y <br>');
+assert.ok(htmlOut.includes('<br>'), 'saltos de línea de la desc se convierten a <br>');
+assert.ok(htmlOut.includes('overdue'), 'due vencida se marca con clase overdue');
+
 // ---- Pack5: anti-sinks estático (vigila que no reaparezca innerHTML/eval) ----
 // El render de Tempo es DOM + textContent. Si alguien introduce innerHTML,
 // insertAdjacentHTML, document.write o eval en los archivos del front, el CI falla.

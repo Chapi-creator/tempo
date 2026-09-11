@@ -158,6 +158,82 @@
     return JSON.stringify(board);
   }
 
+  // ---- Export visual: HTML autocontenido (sin dependencias externas) ----
+  var TAG_COLORS = {
+    '': '#8b93a5', tag1: '#ff6b6b', tag2: '#ffa94d', tag3: '#ffd43b',
+    tag4: '#69db7c', tag5: '#38d9a9', tag6: '#4dabf7', tag7: '#9775fa', tag8: '#f783ac'
+  };
+
+  // eslint-disable-next-line no-unused-vars
+  function boardToHTML(board, meta) {
+    if (!board || !Array.isArray(board.columns)) throw new Error('Tablero inválido');
+    var name = (meta && meta.name) ? String(meta.name) : 'Tempo';
+    var today = new Date();
+    var iso = today.getFullYear() + '-' +
+      String(today.getMonth() + 1).padStart(2, '0') + '-' +
+      String(today.getDate()).padStart(2, '0');
+    var dateStr = today.toLocaleDateString('es', { day: '2-digit', month: 'long', year: 'numeric' });
+    var total = 0;
+
+    var colsHtml = board.columns.map(function (col) {
+      var done = isDoneColumn(col.title);
+      var cardsHtml = col.cards.map(function (c) {
+        total++;
+        var overdue = c.due && !done && c.due < iso;
+        var dueEsc = c.due ? '<div class="due' + (overdue ? ' overdue' : '') + '">⏰ ' + esc(formatDue(c.due)) + '</div>' : '';
+        var tagDot = c.tag ? '<span class="tag" style="background:' + TAG_COLORS[c.tag] + '"></span>' : '';
+        return '<div class="card' + (overdue ? ' overdue' : '') + '">' +
+          '<div class="card-head">' + (tagDot || '') +
+          '<h3>' + esc(c.title || 'Sin título') + '</h3></div>' +
+          (c.desc ? '<p>' + esc(c.desc).replace(/\n/g, '<br>') + '</p>' : '') +
+          dueEsc + '</div>';
+      }).join('');
+
+      return '<div class="column"><div class="col-head"><div class="col-title">' +
+        esc(col.title || '(' + 'Sin nombre' + ')') +
+        '</div><span class="col-count">' + col.cards.length + '</span></div>' +
+        '<div class="cards">' + (cardsHtml || '<div class="empty">Sin tarjetas</div>') + '</div></div>';
+    }).join('');
+
+    return '<!DOCTYPE html>\n<html lang="es"><head><meta charset="UTF-8">' +
+      '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+      '<title>' + esc(name) + ' — exportado ' + dateStr + '</title>' +
+      '<style>' + EXPORT_CSS + '</style></head><body>' +
+      '<header><h1>' + esc(name) + '</h1><span>' + total + ' tareas · ' + dateStr + '</span></header>' +
+      '<main>' + colsHtml + '</main></body></html>';
+  }
+
+  function formatDue(d) {
+    var p = d.split('-');
+    if (p.length !== 3) return d;
+    var MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    var m = +p[1];
+    if (!(m >= 1 && m <= 12)) return d;
+    return (+p[2]) + ' ' + MONTHS[m - 1];
+  }
+
+  var EXPORT_CSS =
+    '* { box-sizing: border-box; margin: 0; }' +
+    'body { background: #0f1115; color: #e6e9ef; font-family: system-ui, Segoe UI, Roboto, sans-serif; min-height: 100vh; }' +
+    'header { display: flex; align-items: baseline; gap: 16px; padding: 18px 22px; background: #171a21; border-bottom: 1px solid #2a303c; position: sticky; top: 0; }' +
+    'header h1 { font-size: 20px; font-weight: 700; }' +
+    'header span { font-size: 12px; color: #8b93a5; margin-left: auto; }' +
+    'main { padding: 20px; display: flex; gap: 16px; align-items: flex-start; overflow-x: auto; scrollbar-width: thin; scrollbar-color: #2a303c transparent; }' +
+    '.column { background: #171a21; border: 1px solid #2a303c; border-radius: 12px; width: 280px; min-width: 280px; display: flex; flex-direction: column; max-height: calc(100vh - 140px); }' +
+    '.col-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #2a303c; }' +
+    '.col-title { font-weight: 700; font-size: 14px; }' +
+    '.col-count { font-size: 12px; color: #8b93a5; background: #1e232d; border-radius: 20px; padding: 2px 8px; }' +
+    '.cards { padding: 10px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #2a303c transparent; }' +
+    '.card { background: #1e232d; border: 1px solid #2a303c; border-radius: 10px; padding: 10px 12px; font-size: 13px; }' +
+    '.card-head { display: flex; align-items: center; gap: 6px; }' +
+    '.card h3 { font-size: 13px; font-weight: 600; }' +
+    '.card p { color: #8b93a5; font-size: 12px; white-space: pre-wrap; margin: 6px 0 0; }' +
+    '.tag { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }' +
+    '.due { font-size: 11px; color: #8b93a5; margin-top: 6px; }' +
+    '.card.overdue { border-color: #ff6b6b; } .card.overdue h3 { color: #ff6b6b; }' +
+    '.due.overdue { color: #ff6b6b; font-weight: 700; }' +
+    '.empty { font-size: 12px; color: #8b93a5; padding: 8px; text-align: center; }';
+
   // ---- Sanitización (borde de confianza) ----
   function sanitizeTitle(v) {
     if (typeof v !== 'string') return '';
@@ -286,6 +362,7 @@
     moveCard: moveCard,
     serialize: serialize,
     deserialize: deserialize,
+    boardToHTML: boardToHTML,
     sanitizeCard: sanitizeCard,
     isDoneColumn: isDoneColumn,
     recordEvent: recordEvent,

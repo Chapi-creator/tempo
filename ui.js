@@ -543,6 +543,21 @@
     a.download = defaultName;
     a.click(); URL.revokeObjectURL(a.href);
   });
+  $('exportHtmlBtn').addEventListener('click', function () {
+    var meta = BS.loadIndex().find(function (x) { return x.id === state.boardId; }) || {};
+    var safe = (meta.name || 'kanban').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'kanban';
+    var fileContent = M.boardToHTML(state.board, meta);
+    var defaultName = safe + '-' + new Date().toISOString().slice(0,10) + '.html';
+    if (window.tempoApp) {
+      window.tempoApp.saveFile({ defaultName: defaultName, content: fileContent });
+      return;
+    }
+    var blob = new Blob([fileContent], { type: 'text/html' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = defaultName;
+    a.click(); URL.revokeObjectURL(a.href);
+  });
   function importAsNewBoard(content) {
     var board = M.deserialize(content);           // valida schema/límites XSS-safe
     var name = 'Importado ' + new Date().toISOString().slice(0,10);

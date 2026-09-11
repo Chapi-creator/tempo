@@ -133,7 +133,10 @@ ipcMain.handle('save-file', async (event, payload) => {
   if (Buffer.byteLength(content, 'utf8') > MAX_WRITE_BYTES) return null;
   const { canceled, filePath } = await dialog.showSaveDialog({
     defaultPath: defaultName,
-    filters: [{ name: 'JSON', extensions: ['json'] }]
+    filters: [
+      { name: 'HTML', extensions: ['html'] },
+      { name: 'JSON', extensions: ['json'] }
+    ]
   });
   if (canceled || !filePath) return null;
   await fs.writeFile(filePath, content, 'utf8');
