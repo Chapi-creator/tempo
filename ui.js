@@ -26,6 +26,39 @@
     BS.saveEvents(state.boardId, events);
   }
 
+  // ---- Modal genérico (sin prompt/confirm/alert nativos: Browser Guard los marca) ----
+  // openModal({ title, text, input, okLabel, onOk, onCancel })
+  var modalOnCancel = null;
+  function openModal(o) {
+    $('modalTitle').textContent = o.title || (o.input ? 'Nuevo' : 'Aviso');
+    $('modalText').textContent = o.text || '';
+    var wrap = $('modalInputWrap');
+    wrap.hidden = !o.input;
+    if (o.input) { $('modalInput').value = o.input; $('modalInput').focus(); }
+    $('modalOk').textContent = o.okLabel || 'Aceptar';
+    $('modalOk').disabled = false;
+    modalOnCancel = o.onCancel || null;
+    $('modalOverlay').hidden = false;
+    $('modalOk').onclick = function () {
+      $('modalOverlay').hidden = true;
+      var cb = o.onOk; o.onOk = null;
+      if (cb) cb();
+    };
+    $('modalCancel').onclick = function () { closeModal(); };
+  }
+  function closeModal() {
+    $('modalOverlay').hidden = true;
+    var c = modalOnCancel; modalOnCancel = null;
+    if (c) c();
+  }
+  // Enter = Ok en el campo de texto; Escape = cerrar
+  $('modalInput').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') $('modalOk').click();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !$('modalOverlay').hidden) closeModal();
+  });
+
   function load() {
     BS.migrate();
     var hadIndex = BS.loadIndex() !== null;
@@ -88,27 +121,31 @@
   }
   $('boardSel').addEventListener('change', function (e) { switchBoard(e.target.value); });
   $('newBoardBtn').addEventListener('click', function () {
-    var name = prompt('Nombre del tablero:', 'Tablero');
-    if (name === null) return;
-    var id = BS.createBoard(BS.loadIndex(), name || 'Tablero');
-    BS.saveBoard(id, M.serialize(M.newBoard()));
-    BS.saveEvents(id, []);
-    switchBoard(id);
+    openModal({ title: 'Nuevo tablero', input: 'Tablero', onOk: function () {
+      var name = $('modalInput').value.trim() || 'Tablero';
+      var id = BS.createBoard(BS.loadIndex(), name);
+      BS.saveBoard(id, M.serialize(M.newBoard()));
+      BS.saveEvents(id, []);
+      switchBoard(id);
+    } });
   });
   $('renameBoardBtn').addEventListener('click', function () {
     var meta = BS.loadIndex().find(function (x) { return x.id === state.boardId; });
-    var name = prompt('Nombre del tablero:', meta ? meta.name : '');
-    if (name === null) return;
-    BS.renameBoard(BS.loadIndex(), state.boardId, name);
-    buildBoardSelect(); render();
+    openModal({ title: 'Renombrar tablero', input: meta ? meta.name : '', onOk: function () {
+      var name = $('modalInput').value.trim();
+      if (!name) return;
+      BS.renameBoard(BS.loadIndex(), state.boardId, name);
+      buildBoardSelect(); render();
+    } });
   });
   $('deleteBoardBtn').addEventListener('click', function () {
     var idx = BS.loadIndex();
-    if (idx.length <= 1) { alert('No se puede borrar el único tablero'); return; }
-    if (!confirm('¿Borrar este tablero?')) return;
-    var rest = idx.filter(function (x) { return x.id !== state.boardId; });
-    BS.deleteBoard(BS.loadIndex(), state.boardId);
-    switchBoard(rest[0].id);
+    if (idx.length <= 1) { openModal({ title: 'Aviso', text: 'No se puede borrar el único tablero' }); return; }
+    openModal({ title: 'Borrar tablero', text: '¿Borrar este tablero?', okLabel: 'Borrar', onOk: function () {
+      var rest = idx.filter(function (x) { return x.id !== state.boardId; });
+      BS.deleteBoard(BS.loadIndex(), state.boardId);
+      switchBoard(rest[0].id);
+    } });
   });
 
   // ---- Filtros ----
@@ -381,18 +418,21 @@
   }
   function renameColumn(colId) {
     var col = state.board.columns.find(function (c) { return c.id === colId; });
-    var name = prompt('Nombre de la columna:', col ? col.title : '');
-    if (name && name.trim()) {
-      snapshot();
-      M.renameColumn(state.board, colId, name.trim());
-      persist(); render();
-    }
+    openModal({ title: 'Renombrar columna', input: col ? col.title : '', onOk: function () {
+      var name = $('modalInput').value.trim();
+      if (name) {
+        snapshot();
+        M.renameColumn(state.board, colId, name);
+        persist(); render();
+      }
+    } });
   }
   function deleteColumn(colId) {
-    if (!confirm('¿Borrar esta columna y sus tarjetas?')) return;
-    snapshot();
-    M.deleteColumn(state.board, colId);
-    persist(); render();
+    openModal({ title: 'Borrar columna', text: '¿Borrar esta columna y sus tarjetas?', okLabel: 'Borrar', onOk: function () {
+      snapshot();
+      M.deleteColumn(state.board, colId);
+      persist(); render();
+    } });
   }
   function moveCol(colId, delta) {
     var from = state.board.columns.findIndex(function (c) { return c.id === colId; });
@@ -467,21 +507,25 @@
     openEditor(copy, true);
   });
   $('delBtn').addEventListener('click', function () {
-    if (!editing || !confirm('¿Borrar esta tarjeta?')) return;
-    snapshot();
-    var col = findCardColumn(editing.id);
-    if (col) { M.deleteCard(state.board, col.id, editing.id); }
-    persist(); render(); closeEditor();
+    if (!editing) return;
+    var id = editing.id;
+    openModal({ title: 'Borrar tarjeta', text: '¿Borrar esta tarjeta?', okLabel: 'Borrar', onOk: function () {
+      snapshot();
+      var col = findCardColumn(id);
+      if (col) { M.deleteCard(state.board, col.id, id); }
+      persist(); render(); closeEditor();
+    } });
   });
 
   // ---- Header actions ----
   $('addColBtn').addEventListener('click', function () {
-    if (state.board.columns.length >= M.LIMITS.maxColumns) { alert('Límite de columnas alcanzado'); return; }
-    var name = prompt('Nombre de la columna:', 'Nueva columna');
-    if (name === null) return;                     // cancelar: no crear nada
-    snapshot();
-    var col = M.addColumn(state.board, name.trim() || 'Nueva columna');
-    persist(); render();
+    if (state.board.columns.length >= M.LIMITS.maxColumns) { openModal({ title: 'Aviso', text: 'Límite de columnas alcanzado' }); return; }
+    openModal({ title: 'Nueva columna', input: 'Nueva columna', onOk: function () {
+      var name = $('modalInput').value.trim();
+      snapshot();
+      var col = M.addColumn(state.board, name || 'Nueva columna');
+      persist(); render();
+    } });
   });
   $('themeBtn').addEventListener('click', toggleTheme);
   $('exportBtn').addEventListener('click', function () {
@@ -512,7 +556,7 @@
       window.tempoApp.openFile().then(function (res) {
         if (!res) return;
         try { importAsNewBoard(res.content); persist(); render(); }
-        catch (err) { alert('Archivo inválido: ' + err.message); }
+        catch (err) { openModal({ title: 'Archivo inválido', text: err.message }); }
       });
       return;
     }
@@ -523,7 +567,7 @@
     window.tempoApp.onOpenFile(function (res) {
       if (!res || typeof res.content !== 'string') return;
       try { importAsNewBoard(res.content); persist(); render(); }
-      catch (err) { alert('Archivo inválido: ' + err.message); }
+      catch (err) { openModal({ title: 'Archivo inválido', text: err.message }); }
     });
   }
   $('fileInput').addEventListener('change', function (e) {
@@ -531,7 +575,7 @@
     var r = new FileReader();
     r.onload = function () {
       try { importAsNewBoard(r.result); persist(); render(); }
-      catch (err) { alert('Archivo inválido: ' + err.message); }
+      catch (err) { openModal({ title: 'Archivo inválido', text: err.message }); }
     };
     r.readAsText(f);
     e.target.value = '';
