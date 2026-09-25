@@ -566,7 +566,7 @@
   $('exportHtmlBtn').addEventListener('click', function () {
     var meta = BS.loadIndex().find(function (x) { return x.id === state.boardId; }) || {};
     var safe = (meta.name || 'kanban').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'kanban';
-    var fileContent = M.boardToHTML(state.board, meta);
+    var fileContent = '﻿' + M.boardToHTML(state.board, meta);
     var defaultName = safe + '-' + new Date().toISOString().slice(0,10) + '.html';
     if (window.tempoApp) {
       window.tempoApp.saveFile({ defaultName: defaultName, content: fileContent });
