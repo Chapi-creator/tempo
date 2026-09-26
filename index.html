@@ -193,6 +193,8 @@
   <button id="exportHtmlBtn" title="Guardar copia visual (HTML autocontenido)">⬇ HTML</button>
   <button id="exportBtn" title="Guardar copia en JSON">⬇ Exportar</button>
   <button id="importBtn" title="Cargar copia desde JSON">⬆ Importar</button>
+  <button id="mergeBtn" title="Fusionar copia JSON en este tablero">⧉ Fusionar</button>
+  <button id="tplBtn" title="Plantillas">📋</button>
   <button id="statsBtn" title="Estadísticas">📊</button>
   <input type="file" id="fileInput" accept=".json" hidden>
   <button class="primary" id="addColBtn">+ Columna</button>
@@ -247,6 +249,18 @@
     <div class="btns" style="justify-content:center">
       <button id="modalCancel">Cancelar</button>
       <button class="primary" id="modalOk">Aceptar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" style="z-index:20" id="tplOverlay">
+  <div class="editor" style="max-width:420px">
+    <h2>Plantillas</h2>
+    <div id="tplList"></div>
+    <div class="btns" style="justify-content:center">
+      <button id="tplSaveCurrentBtn">★ Guardar actual</button>
+      <button id="tplImportBtn">⬆ Importar</button>
+      <button id="tplCloseBtn">Cerrar</button>
     </div>
   </div>
 </div>

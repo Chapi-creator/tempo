@@ -344,6 +344,110 @@
     return { columns: safeCols };
   }
 
+  // ---- Colaboración por archivo: fusión de un tablero en otro ----
+  // El archivo entrante ya pasó por deserialize (schema/límites/XSS-safe).
+  // Regla: "el archivo que importás es la versión más nueva".
+  //  - Columna igual por título → se reutiliza (actualiza sus tarjetas).
+  //  - Columna nueva → se agrega (respetando maxColumns).
+  //  - Tarjeta igual por título en esa columna → se actualiza (desc/tag/due).
+  //  - Tarjeta nueva → se agrega con id fresco.
+  function mergeBoard(target, incoming) {
+    if (!target || !Array.isArray(target.columns) || !incoming || !Array.isArray(incoming.columns)) {
+      throw new Error('Tablero inválido');
+    }
+    var result = { added: 0, updated: 0, newColumns: 0 };
+    incoming.columns.forEach(function (col) {
+      var tcol = null;
+      for (var i = 0; i < target.columns.length; i++) {
+        if (target.columns[i].title === col.title) { tcol = target.columns[i]; break; }
+      }
+      if (!tcol) {
+        if (target.columns.length >= LIMITS.maxColumns) return;
+        tcol = blankColumn(col.title);
+        target.columns.push(tcol);
+        result.newColumns++;
+      }
+      col.cards.forEach(function (card) {
+        if (tcol.cards.length >= LIMITS.maxCardsPerCol) return;
+        var existing = null;
+        for (var j = 0; j < tcol.cards.length; j++) {
+          if (tcol.cards[j].title === card.title) { existing = tcol.cards[j]; break; }
+        }
+        if (existing) {
+          existing.desc = card.desc;
+          existing.tag = card.tag;
+          existing.due = card.due;
+          result.updated++;
+        } else {
+          tcol.cards.push(sanitizeCard({ id: uid(), title: card.title, desc: card.desc, tag: card.tag, due: card.due }));
+          result.added++;
+        }
+      });
+    });
+    return result;
+  }
+
+  // ---- Plantillas embebidas ----
+  // Cada plantilla es un tablero válido; se instancia con deserialize (ids frescos + límites).
+  var TEMPLATES = [
+    {
+      name: 'Rutina semanal',
+      board: { columns: [
+        { title: 'Por hacer', cards: [
+          { id: 't', title: 'Planear la semana', desc: 'Lunes a la mañana: armar la lista de prioridades.', tag: 'tag4', due: '' },
+          { id: 't', title: 'Revisar pendientes', desc: 'Repasar lo que quedó de la semana pasada.', tag: 'tag1', due: '' },
+          { id: 't', title: 'Hacer la compra', desc: 'Frutas, verduras y lo que falte.', tag: 'tag3', due: '' }
+        ]},
+        { title: 'En curso', cards: [
+          { id: 't', title: 'Proyecto principal', desc: 'Avanzar una hora por día.', tag: 'tag6', due: '' },
+          { id: 't', title: 'Ejercicio', desc: 'Salir a caminar o algo de movimiento.', tag: 'tag5', due: '' }
+        ]},
+        { title: 'Hecho', cards: [] }
+      ]}
+    },
+    {
+      name: 'Mudanza',
+      board: { columns: [
+        { title: 'Empacar', cards: [
+          { id: 't', title: 'Empacar cocina', desc: 'Ollas, platos y cubiertos.', tag: 'tag4', due: '' },
+          { id: 't', title: 'Empacar ropa', desc: 'Por temporada y etiquetada.', tag: 'tag6', due: '' },
+          { id: 't', title: 'Empacar libros', desc: 'Cajas chicas, libros pesados.', tag: 'tag7', due: '' }
+        ]},
+        { title: 'Transportar', cards: [
+          { id: 't', title: 'Reservar camioneta', desc: 'Confirmar fecha y horario.', tag: 'tag1', due: '' }
+        ]},
+        { title: 'Instalar', cards: [] }
+      ]}
+    },
+    {
+      name: 'Estudio / Clases',
+      board: { columns: [
+        { title: 'Por estudiar', cards: [
+          { id: 't', title: 'Resumen capítulo 2', desc: 'Anotar conceptos clave.', tag: 'tag4', due: '' },
+          { id: 't', title: 'Practicar ejercicios', desc: 'Los de la guía 3.', tag: 'tag5', due: '' },
+          { id: 't', title: 'Ver clase grabada', desc: 'La que faltó.', tag: 'tag3', due: '' }
+        ]},
+        { title: 'En curso', cards: [
+          { id: 't', title: 'Trabajo práctico', desc: 'Entregar antes del viernes.', tag: 'tag6', due: '' }
+        ]},
+        { title: 'Repasado', cards: [] }
+      ]}
+    },
+    {
+      name: 'Proyecto compartido',
+      board: { columns: [
+        { title: 'Por hacer', cards: [
+          { id: 't', title: 'Definir alcance', desc: 'Qué entra y qué no en esta etapa.', tag: 'tag4', due: '' },
+          { id: 't', title: 'Repartir tareas', desc: 'Cada uno toma una columna o tarjetas.', tag: 'tag1', due: '' }
+        ]},
+        { title: 'En curso', cards: [
+          { id: 't', title: 'Poner título provisorio', desc: 'Se decide en la próxima revisión.', tag: 'tag6', due: '' }
+        ]},
+        { title: 'Hecho', cards: [] }
+      ]}
+    }
+  ];
+
   var api = {
     LIMITS: LIMITS,
     uid: uid,
@@ -362,6 +466,8 @@
     moveCard: moveCard,
     serialize: serialize,
     deserialize: deserialize,
+    mergeBoard: mergeBoard,
+    TEMPLATES: TEMPLATES,
     boardToHTML: boardToHTML,
     sanitizeCard: sanitizeCard,
     isDoneColumn: isDoneColumn,

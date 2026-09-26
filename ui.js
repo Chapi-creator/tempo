@@ -70,6 +70,7 @@
   });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && $('modalOverlay').classList.contains('open')) closeModal();
+    else if (e.key === 'Escape' && $('tplOverlay').classList.contains('open')) closeTemplates();
   });
 
   function load() {
@@ -586,17 +587,45 @@
     BS.saveEvents(id, []);
     switchBoard(id);
   }
+  // fileMode recuerda qué acción disparó el fileInput (importar / fusionar / importar plantilla)
+  var fileMode = 'board';
   $('importBtn').addEventListener('click', function () {
+    fileMode = 'board';
+    pickFile();
+  });
+  $('mergeBtn').addEventListener('click', function () {
+    fileMode = 'merge';
+    pickFile();
+  });
+  function pickFile() {
     if (window.tempoApp) {
       window.tempoApp.openFile().then(function (res) {
         if (!res) return;
-        try { importAsNewBoard(res.content); persist(); render(); }
+        try { handleImport(res.content); persist(); render(); }
         catch (err) { openModal({ title: 'Archivo inválido', text: err.message }); }
       });
       return;
     }
     $('fileInput').click();
-  });
+  }
+  function handleImport(content) {
+    if (fileMode === 'merge') {
+      var before = M.serialize(state.board);
+      var res = M.mergeBoard(state.board, M.deserialize(content));
+      snapshotIfChanged(before);
+      openModal({
+        title: 'Fusión completa',
+        text: res.added + ' tarjetas agregadas · ' + res.updated + ' actualizadas · ' + res.newColumns + ' columnas nuevas.'
+      });
+      return;
+    }
+    if (fileMode === 'template') {
+      importTemplate(content);
+      renderTplList();
+      return;
+    }
+    importAsNewBoard(content);
+  }
   if (window.tempoApp && window.tempoApp.onOpenFile) {
     // F2.7: archivo .tempo.json abierto por doble clic → se importa como tablero nuevo
     window.tempoApp.onOpenFile(function (res) {
@@ -609,7 +638,7 @@
     var f = e.target.files[0]; if (!f) return;
     var r = new FileReader();
     r.onload = function () {
-      try { importAsNewBoard(r.result); persist(); render(); }
+      try { handleImport(r.result); persist(); render(); }
       catch (err) { openModal({ title: 'Archivo inválido', text: err.message }); }
     };
     r.readAsText(f);
@@ -689,6 +718,97 @@
     var isOpen = $('statsPanel').classList.toggle('open');
     if (isOpen) renderStats();
   });
+
+  // ---- Plantillas ----
+  function openTemplates() {
+    renderTplList();
+    $('tplOverlay').classList.add('open');
+  }
+  function closeTemplates() {
+    $('tplOverlay').classList.remove('open');
+  }
+  function renderTplList() {
+    var list = $('tplList');
+    list.textContent = '';
+    (M.TEMPLATES || []).forEach(function (t) { tplRow(list, t.name, t.board, null); });
+    BS.loadTemplates().forEach(function (t) {
+      tplRow(list, t.name, t.json, t.id);
+    });
+  }
+  function tplRow(list, name, source, customId) {
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line, #333)';
+    var label = document.createElement('span');
+    label.textContent = name;
+    label.style.flex = '1';
+    row.appendChild(label);
+    var btns = document.createElement('span');
+    btns.style.cssText = 'display:flex;gap:6px';
+    row.appendChild(btns);
+    var use = document.createElement('button');
+    use.textContent = 'Usar';
+    use.onclick = function () { createBoardFromTemplate(source); };
+    btns.appendChild(use);
+    if (customId) {
+      var exp = document.createElement('button');
+      exp.textContent = 'Exportar';
+      exp.onclick = function () { exportTemplateJson(name, source); };
+      btns.appendChild(exp);
+      var del = document.createElement('button');
+      del.textContent = 'Borrar';
+      del.onclick = function () { BS.deleteTemplate(customId); renderTplList(); };
+      btns.appendChild(del);
+    }
+    list.appendChild(row);
+  }
+  function createBoardFromTemplate(source) {
+    try {
+      var board = M.deserialize(typeof source === 'string' ? source : JSON.stringify(source));
+      var name = 'Nuevo tablero';
+      var id = BS.createBoard(BS.loadIndex(), name);
+      BS.saveBoard(id, board);
+      BS.saveEvents(id, []);
+      closeTemplates();
+      switchBoard(id);
+    } catch (err) { openModal({ title: 'Plantilla inválida', text: err.message }); }
+  }
+  function exportTemplateJson(name, json) {
+    var safe = String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'plantilla';
+    var content = typeof json === 'string' ? json : JSON.stringify(json);
+    var defaultName = safe + '-' + new Date().toISOString().slice(0,10) + '.json';
+    if (window.tempoApp) { window.tempoApp.saveFile({ defaultName: defaultName, content: content }); return; }
+    var blob = new Blob([content], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = defaultName;
+    a.click(); URL.revokeObjectURL(a.href);
+  }
+  $('tplBtn').addEventListener('click', openTemplates);
+  $('tplCloseBtn').addEventListener('click', closeTemplates);
+  $('tplSaveCurrentBtn').addEventListener('click', function () {
+    openModal({ title: 'Guardar tablero como plantilla', input: 'Mi plantilla', onOk: function () {
+      var name = $('modalInput').value.trim() || 'Mi plantilla';
+      BS.addTemplate(name, M.serialize(state.board));
+      renderTplList();
+    } });
+  });
+  $('tplImportBtn').addEventListener('click', function () {
+    fileMode = 'template';
+    if (window.tempoApp) {
+      window.tempoApp.openFile().then(function (res) {
+        if (!res) return;
+        try { importTemplate(res.content); renderTplList(); }
+        catch (err) { openModal({ title: 'Archivo inválido', text: err.message }); }
+      });
+      return;
+    }
+    $('fileInput').click();
+  });
+  function importTemplate(content) {
+    var board = M.deserialize(content);
+    var name = 'Plantilla ' + new Date().toLocaleDateString('es');
+    BS.addTemplate(name, M.serialize(board));
+  }
 
   renderStats();
 })();

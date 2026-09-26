@@ -11,6 +11,7 @@
   var K_ACTIVE = 'board.active';
   var K_DATA = 'board.data.';
   var K_EVENTS = 'board.events.';
+  var K_TEMPLATES = 'tempo.templates';
   var K_LEGACY_DATA = 'board.data';
   var K_LEGACY_EVENTS = 'board.events';
   var NAME_MAX = 40;
@@ -156,6 +157,40 @@
     setItem(K_ACTIVE, id);
   }
 
+  // ---- Plantillas personalizadas del usuario (clave única, ids + nombre saneado) ----
+  function loadTemplates() {
+    var raw = getItem(K_TEMPLATES);
+    if (!raw) return [];
+    try {
+      var arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return [];
+      return arr
+        .filter(function (t) { return t && typeof t.id === 'string' && t.id && typeof t.json === 'string'; })
+        .map(function (t) { return { id: t.id, name: sanitizeName(t.name || 'Plantilla'), json: t.json }; });
+    } catch (e) { return []; }
+  }
+
+  function saveTemplates(list) {
+    return setItem(K_TEMPLATES, JSON.stringify(list));
+  }
+
+  function addTemplate(name, boardJson) {
+    var list = loadTemplates();
+    var t = { id: uid(), name: sanitizeName(name || 'Plantilla'), json: String(boardJson || '') };
+    list.push(t);
+    saveTemplates(list);
+    return t.id;
+  }
+
+  function deleteTemplate(id) {
+    var list = loadTemplates();
+    var i = list.findIndex(function (t) { return t.id === id; });
+    if (i === -1) return false;
+    list.splice(i, 1);
+    saveTemplates(list);
+    return true;
+  }
+
   var api = {
     sanitizeName: sanitizeName,
     loadIndex: loadIndex,
@@ -170,6 +205,10 @@
     createBoard: createBoard,
     renameBoard: renameBoard,
     deleteBoard: deleteBoard,
+    loadTemplates: loadTemplates,
+    saveTemplates: saveTemplates,
+    addTemplate: addTemplate,
+    deleteTemplate: deleteTemplate,
     _use: _use,
     _uid: uid
   };

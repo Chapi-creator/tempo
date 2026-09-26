@@ -253,4 +253,77 @@ assert.strictEqual(idx.length, 1, 'deleteBoard quita del index');
 assert.ok('board.data.' + id2 in store.d === false, 'deleteBoard limpia los datos del tablero');
 assert.deepStrictEqual(BS.loadBoard(migrated), JSON.parse(v1data), 'el otro tablero sigue intacto');
 
-console.log('Todos los tests pasan: funcional + estadísticas + seguridad (XSS, pollution, schema, límites, ids) + boardStore');
+// ---- Pack8: merge por archivo (colaboración sin servidor) ----
+const MK = require('./app.js');
+const target = MK.deserialize(JSON.stringify({ columns: [
+  { title: 'Por hacer', cards: [
+    { id: 'a', title: 'Comprar pan', desc: 'v1', tag: 'tag1', due: '' },
+    { id: 'b', title: 'Llamar al banco', desc: '', tag: '', due: '' }
+  ] },
+  { title: 'Hecho', cards: [] }
+]}));
+const incoming = MK.deserialize(JSON.stringify({ columns: [
+  { title: 'Por hacer', cards: [
+    { id: 'x', title: 'Comprar pan', desc: 'v2 editado por otro', tag: 'tag5', due: '2026-10-01' },
+    { id: 'y', title: 'Comprar leche', desc: 'nueva del otro', tag: '', due: '' }
+  ] },
+  { title: 'En curso', cards: [{ id: 'z', title: 'Agendar reunión', desc: '', tag: '', due: '' }] }
+]}));
+const mergeRes = MK.mergeBoard(target, incoming);
+assert.strictEqual(mergeRes.added, 2, 'merge agrega tarjetas nuevas (leche + reunión via columna nueva)');
+assert.strictEqual(mergeRes.updated, 1, 'merge actualiza la tarjeta que ya existía (Comprar pan)');
+assert.strictEqual(mergeRes.newColumns, 1, 'merge crea la columna En curso');
+const pan = target.columns.find(c => c.title === 'Por hacer').cards.find(c => c.title === 'Comprar pan');
+assert.strictEqual(pan.desc, 'v2 editado por otro', 'la edición del otro se aplica sobre la tarjeta existente');
+assert.strictEqual(pan.id, 'a', 'el id local se conserva al actualizar');
+assert.strictEqual(pan.tag, 'tag5', 'la etiqueta se actualiza');
+assert.strictEqual(target.columns.length, 3, 'el tablero destino gana la columna nueva');
+assert.strictEqual(pan.id === 'x', false, 'no se mezclan ids del archivo entrante');
+
+// merge respeta límites: columna al tope de maxCardsPerCol
+const fullTarget = MK.deserialize(JSON.stringify({ columns: [{ title: 'C', cards: [] }] }));
+for (let i = 0; i < MK.LIMITS.maxCardsPerCol; i++) {
+  MK.addCard(fullTarget, fullTarget.columns[0].id, { title: 't' + i });
+}
+const bigIncoming = MK.deserialize(JSON.stringify({ columns: [{ title: 'C', cards: [{ title: 't0' }, { title: 'extra' }] }] }));
+const fullRes = MK.mergeBoard(fullTarget, bigIncoming);
+assert.strictEqual(fullRes.added, 0, 'merge no supera maxCardsPerCol');
+
+// merge respeta maxColumns
+const colTarget = MK.deserialize(JSON.stringify({ columns: [{ title: 'C' + Math.random() }] }));
+// dejar en maxColumns - 1 (una columna inicial + el resto) para que entre solo 1 de 2
+for (let i = 0; i < MK.LIMITS.maxColumns - 2; i++) MK.addColumn(colTarget, 'X' + i + Math.random());
+const extraCol = MK.deserialize(JSON.stringify({ columns: [
+  { title: 'Nueva A', cards: [{ title: 'c1' }] },
+  { title: 'Nueva B', cards: [{ title: 'c2' }] }
+]}));
+const colRes = MK.mergeBoard(colTarget, extraCol);
+assert.strictEqual(colRes.newColumns, 1, 'merge corta en maxColumns (solo 1 de 2 columnas entra)');
+assert.strictEqual(colTarget.columns.length, MK.LIMITS.maxColumns, 'el destino queda en maxColumns exacto');
+
+// ---- Pack9: plantillas ----
+assert.ok(Array.isArray(MK.TEMPLATES) && MK.TEMPLATES.length === 4, 'existen 4 plantillas embebidas');
+MK.TEMPLATES.forEach((t) => {
+  assert.ok(t.name && typeof t.name === 'string', 'plantilla con nombre');
+  const inst = MK.deserialize(JSON.stringify(t.board));
+  assert.ok(inst.columns.length >= 1, 'plantilla ' + t.name + ' instancia columnas');
+  assert.ok(inst.columns.every(c => c.title.length <= MK.LIMITS.colTitle), 'títulos de columna dentro del límite');
+  assert.ok(inst.columns.every(c => c.cards.length <= MK.LIMITS.maxCardsPerCol), 'tarjetas dentro del límite');
+  assert.ok(inst.columns.every(c => c.cards.every(cd => cd.title.length <= MK.LIMITS.title && cd.desc.length <= MK.LIMITS.desc)), 'campos dentro de límites');
+});
+
+// plantillas personalizadas en boardStore (create/load/delete)
+store.d['tempo.templates'] = '';
+const tplId = BS.addTemplate('  Mudanza propia  ', JSON.stringify(K.newBoard()));
+assert.ok(tplId, 'addTemplate devuelve id');
+let tpls = BS.loadTemplates();
+assert.strictEqual(tpls.length, 1, 'loadTemplates lee la plantilla guardada');
+assert.strictEqual(tpls[0].name, 'Mudanza propia', 'nombre saneado (trim)');
+const storedCols = JSON.parse(tpls[0].json).columns.map(c => c.title);
+assert.deepStrictEqual(storedCols, ['Por hacer', 'En curso', 'Hecho'], 'el json de la plantilla se preserva (estructura)');
+assert.ok(BS.deleteTemplate(tplId), 'deleteTemplate borra');
+assert.strictEqual(BS.loadTemplates().length, 0, 'deleteTemplate deja vacío');
+store.d['tempo.templates'] = 'esto-no-es-json';
+assert.strictEqual(BS.loadTemplates().length, 0, 'loadTemplates tolera contenido corrupto');
+
+console.log('Todos los tests pasan: funcional + estadísticas + seguridad (XSS, pollution, schema, límites, ids) + boardStore + merge + plantillas');
