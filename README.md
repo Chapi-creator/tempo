@@ -75,3 +75,7 @@ npm run dist     # genera el instalador de Windows
 ## 🧠 ¿Cómo se hizo?
 
 Todo el desarrollo se hizo **conversando con Opencode** en la terminal, iteración por iteración, con la regla de "no gastar un peso ni una dependencia". El repo, el CI (GitHub Actions), el hosting (Vercel free) y las releases de Electron son todos gratuitos. Si te gusta la idea de construir software a coste cero, este es un ejemplo viviente.
+
+## 🤝 Contribuir
+
+¿Querés aportar? Lee [CONTRIBUTING.md](CONTRIBUTING.md) — son 5 reglas y un issue primero.
